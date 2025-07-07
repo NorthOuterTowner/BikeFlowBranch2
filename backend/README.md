@@ -17,5 +17,6 @@ backend部分 是一个基于 Node.js 的后端应用程序，旨在根据需求
      node app.js
      ```
     若终端显示🚀 Server is running at http://localhost:${PORT}，则说明后端启动成功。
+    由于当前搭建了与数据库进行连接的框架，因此我假定连接的数据库账号为root，密码为root，数据库名为schedule，具体配置在db/dbUtils.js。若出现“数据库连接失败的问题”，可以将其中的内容改为自己本地存在的某个数据库即可。
 4. 结束进程
    - 在终端中按 `Ctrl + C` 结束当前进程。
