@@ -6,7 +6,7 @@ const pool = mysql.createPool({
   host: "localhost", // MySQL 服务器地址
   user: "root",      // 数据库用户名
   password: "root", // 数据库密码
-  database: "[databasename]",  // 数据库名称
+  database: "schedule",  // 数据库名称
   waitForConnections: true, // 是否等待连接
   connectionLimit: 200,      // 连接池最大连接数
   queueLimit: 0,            // 排队等待的连接数（0 表示不限制）
