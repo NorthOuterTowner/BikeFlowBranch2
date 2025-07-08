@@ -103,7 +103,38 @@ router.post('/register', async (req, res) => {
     from: 'lrz08302005@163.com',
     to: email,
     subject: '注册验证 - 请确认你的邮箱',
-    html: `<p>点击下面链接完成注册：</p><a href="${verifyUrl}">${verifyUrl}</a><p>30分钟内有效</p>`
+    //html: `<p>点击下面链接完成注册：</p><a href="${verifyUrl}">${verifyUrl}</a><p>30分钟内有效</p>`,
+    html:`<html>
+            <body style="font-family: Arial, sans-serif; background-color: #f9f9f9; margin: 0; padding: 0;">
+              <table align="center" width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); padding: 20px;">
+                <tr>
+                  <td style="text-align: center; padding-bottom: 20px;">
+                    <h2 style="color: #333333;">欢迎注册！</h2>
+                    <p style="color: #555555; font-size: 16px; margin: 0;">请点击下面的按钮完成邮箱验证，30分钟内有效。</p>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="text-align: center; padding: 20px 0;">
+                    <a href="${verifyUrl}" style="background-color: #4CAF50; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">
+                      验证邮箱
+                    </a>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="text-align: center; color: #999999; font-size: 12px; padding-top: 10px;">
+                    <p>如果按钮无法点击，请复制下面链接到浏览器打开：</p>
+                    <p style="word-break: break-all;">${verifyUrl}</p>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding-top: 30px; font-size: 12px; color: #aaaaaa; text-align: center;">
+                    <p>如果你没有发起本次请求，请忽略此邮件。</p>
+                    <p>© 2025 BikeFlow 团队</p>
+                  </td>
+                </tr>
+              </table>
+            </body>
+          </html>`
   });
 
   res.send({ code: 200, msg: "验证邮件已发送，请查收邮箱" });
