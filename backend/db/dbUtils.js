@@ -1,3 +1,5 @@
+require("dotenv").config()
+
 const mysql = require("mysql2"); // 使用 mysql2 库
 const path = require("path");
 const Genid = require("../utils/SnowFlake");
@@ -6,13 +8,13 @@ const genid = new Genid({WorkerId:1})
 
 // 创建 MySQL 连接池
 const pool = mysql.createPool({
-  host: "localhost", // MySQL 服务器地址
-  user: "wwh",      // 数据库用户名
-  password: "123456", // 数据库密码
-  database: "traffic",  // 数据库名称
-  waitForConnections: true, // 是否等待连接
-  connectionLimit: 200,      // 连接池最大连接数
-  queueLimit: 0,            // 排队等待的连接数（0 表示不限制）
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+  waitForConnections: true,
+  connectionLimit: 200,
+  queueLimit: 0,
 });
 
 require('events').EventEmitter.defaultMaxListeners = 150;
