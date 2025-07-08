@@ -9,8 +9,8 @@ async function authMiddleware(req, res, next) {
         return res.status(401).json({ error: 'Unauthorized' });
     }
     try {
-        const [rows] = await db.query(
-            'SELECT * FROM user WHERE account = ? AND token = ?',
+        const { err, rows } = await db.async.all(
+            'SELECT * FROM admin WHERE account = ? AND token = ?',
             [account, token]
         );
         if (rows.length === 0) {
@@ -25,9 +25,13 @@ async function authMiddleware(req, res, next) {
 
 router.get('/locations', authMiddleware, async (req, res) => {
   try {
-    const [rows] = await db.query(
-      `SELECT DISTINCT start_station_id AS station_id, start_station_name AS station_name, start_lat AS latitude, start_lng AS longitude FROM bike_trip`
-    );
+      const { err, rows } = await db.async.all(
+          `SELECT DISTINCT start_station_id AS station_id,
+                           start_station_name AS station_name,
+                           start_lat AS latitude,
+                           start_lng AS longitude
+           FROM bike_trip`
+      );
     res.status(200).json(rows);
   } catch (err) {
     res.status(500).json({ error: '数据库查询失败' });

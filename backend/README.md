@@ -21,6 +21,14 @@ backend部分 是一个基于 Node.js 的后端应用程序，旨在根据需求
 4. 结束进程
    - 在终端中按 `Ctrl + C` 结束当前进程。
 
+## 测试说明
+1.如果在未登录状态测试非登录接口，请在header中加入如下数据：
+```bash
+--header 'account: admin' \
+--header 'token: 301b70c6-ec86-465e-a1da-d16f36e32c08' \
+--header 'Content-Type: application/json'
+```
+
 ## 接口说明
 1.登陆注册
 （1）用户注册（POST）
