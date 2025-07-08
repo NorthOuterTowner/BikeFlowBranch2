@@ -3,12 +3,37 @@
 </template>
 
 <script setup>
-// 一般不用写逻辑
+import Cesium from './views/dashboard/mapView.vue'
 </script>
 
+<template>
+  <div id="app" class="full-screen">
+    <Cesium />
+  </div>
+</template>
+
 <style>
-body {
+/* 全局样式重置 */
+* {
   margin: 0;
-  font-family: Arial, sans-serif;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+#app {
+  height: 100vh;
+  width: 100vw;
+  position: relative;
+}
+
+.full-screen {
+  height: 100%;
+  width: 100%;
 }
 </style>
