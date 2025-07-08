@@ -2,6 +2,7 @@ import sys
 sys.stdout.reconfigure(encoding='utf-8')
 import pymysql
 import pandas as pd
+import re
 from tqdm import tqdm
 
 # 1. 连接数据库
@@ -19,10 +20,25 @@ cursor.execute("DELETE FROM station_hourly_flow")
 conn.commit()
 print("旧数据已清空")
 
-# 2. 读取bike_trip数据
+# 1. 读取bike_trip数据
 print("正在从数据库读取骑行记录...")
 sql = "SELECT ride_id, started_at, ended_at, start_station_id, end_station_id FROM bike_trip"
 df = pd.read_sql(sql, conn)
+
+# 2.清洗数据
+pattern = re.compile(r'^[A-Z]{2}\d+$')
+
+# 定义判断函数，判断站点ID是否合规
+def is_valid_station_id(s):
+    if pd.isna(s):
+        return False
+    return bool(pattern.match(str(s)))
+
+# 过滤起点站点ID不合规的行
+df = df[df['start_station_id'].apply(is_valid_station_id)]
+
+# 过滤终点站点ID不合规的行
+df = df[df['end_station_id'].apply(is_valid_station_id)]
 
 # 3. 时间转换及下整小时
 df['started_at'] = pd.to_datetime(df['started_at'], errors='coerce')
