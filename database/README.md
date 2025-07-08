@@ -13,17 +13,27 @@ source /database/trafficData.sql
 ### admin
 ### bike_trip
 id:唯一标识自增id
+
 start_station_id 开始站点id，结束类似
+
 start_lat,start_lng 开始经纬度，结束类似
 ### station_hourly_flow 中间处理表
 station_id：站点
+
 timestamp：时间（datetime类型）
+
 inflow\outflow：流入流出量
+
 created_at：创建时间（待定）
 ### station_hourly_status 预测结果表（即某天某一小时某站点状态）
 id：唯一标识
+
 data：日期
+
 hour:哪一小时
+
 inflow、outflow：流入流出量
+
 stock：该站点该时刻库存
+
 updataed_at：更新时间（待定）
