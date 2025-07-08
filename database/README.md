@@ -27,8 +27,8 @@ inflow\outflow：流入流出量
 created_at：创建时间（待定）
 ### station_hourly_status 预测结果表（即某天某一小时某站点状态）
 id：唯一标识
-
-data：日期
+station_id：站点id
+date：日期
 
 hour:哪一小时
 
