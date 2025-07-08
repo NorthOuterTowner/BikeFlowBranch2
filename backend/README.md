@@ -22,7 +22,53 @@ backend部分 是一个基于 Node.js 的后端应用程序，旨在根据需求
    - 在终端中按 `Ctrl + C` 结束当前进程。
 
 ## 接口说明
-1.站点位置  
+1.登陆注册
+（1）用户注册（POST）
+```bash
+/admin/register
+```
+请求格式
+```bash
+{
+  "username": "admin", //用户名
+  "password": "admin", //密码
+}
+```
+返回格式
+```bash
+{
+  "code": 200, //状态码
+  "msg": "注册成功"
+}
+```
+（2）用户登录（POST）
+```bash
+/admin/login
+```
+请求格式
+```bash
+{
+  "username": "admin", //用户名
+  "password": "admin" //密码
+}
+```
+
+返回格式
+```bash
+{
+  "code": 200, //状态码
+  "msg": "登录成功",
+  "data": 
+    {
+      "account": "admin",
+      "password": "",
+      "token": "b8aeb113-f7b0-47ab-a373-b8719888bcf0",
+      "email": null
+    }
+}
+
+```
+2.站点位置  
 （1）获取所有的站点位置（GET）
 ```bash
 /stations/locations
