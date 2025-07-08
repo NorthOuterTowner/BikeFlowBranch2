@@ -20,12 +20,17 @@ onMounted(() => {
 </script>
 
 <template>
-  <div 
-    ref="mapContainer" 
-    style="width: 100%; height: 100%; border: 1px solid #ccc;"
-  >
+  <div class="map-view">
+    <div 
+      ref="mapContainer" 
+      style="width: 100%; height: 100%; border: 1px solid #ccc;"
+    ></div>
   </div>
 </template>
 
 <style scoped>
+.map-view {
+  width: 100%;
+  height: 100%;
+}
 </style>
