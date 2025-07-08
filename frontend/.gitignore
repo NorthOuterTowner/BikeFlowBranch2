@@ -30,3 +30,9 @@ dist-ssr
 !/public/Cesium/Widgets/
 !/public/Cesium/ThirdParty/
 !/public/Cesium/Workers/
+
+
+# Node modules
+node_modules/
+.env
+.env.*.local
