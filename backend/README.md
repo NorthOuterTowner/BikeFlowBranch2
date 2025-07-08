@@ -30,6 +30,13 @@ backend部分 是一个基于 Node.js 的后端应用程序，旨在根据需求
 ```
 
 ## 接口说明
+0.登录状态验证  
+非登录注册接口需要传入账户与token信息（在登录接口提供）
+```bash
+--header 'account: admin' \
+--header 'token: 301b70c6-ec86-465e-a1da-d16f36e32c08' \
+--header 'Content-Type: application/json'
+```
 1.登陆注册
 （1）用户注册（POST）
 ```bash
