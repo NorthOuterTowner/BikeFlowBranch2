@@ -47,6 +47,7 @@ backend部分 是一个基于 Node.js 的后端应用程序，旨在根据需求
 {
   "username": "admin", //用户名
   "password": "admin", //密码
+  "email": "23301xxx@bjtu.edu.cn" //邮箱
 }
 ```
 返回格式
@@ -103,4 +104,24 @@ backend部分 是一个基于 Node.js 的后端应用程序，旨在根据需求
     "longitude": -74.0518
   },
   // ... more stations
+```
+3.站点单车数量
+（1）获取指定站点在指定时间的单车数量（GET）
+```bash
+/stations/bikeNum
+```
+query参数
+```bash
+{
+  "station_id": "JC019" //站点编号
+  "date": "2023-10-01" //日期
+  "hour": "10" //小时
+}
+```
+返回格式
+```bash
+{
+  "code":200, //状态码
+  "bikeNum": 12 //库存量
+}
 ```
