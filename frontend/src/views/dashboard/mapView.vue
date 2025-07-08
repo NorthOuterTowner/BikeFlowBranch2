@@ -25,6 +25,7 @@ function getNowDatetimeLocal() {
 
 const dateTime = ref(getNowDatetimeLocal())
 const welcoming = ref('管理员，欢迎您！')
+const searchQuery = ref('')  // 添加搜索查询的响应式数据
 
 onMounted(() => {
   mapInstance = new Map({
@@ -53,6 +54,14 @@ const logout = async () => {
   // 跳转到登录页
   router.push('/login')
 }
+
+const handleSearch = () => {
+  if (searchQuery.value.trim()) {
+    console.log('搜索:', searchQuery.value)
+    // 在这里添加搜索逻辑
+    // 例如：调用API搜索站点，或者在地图上高亮显示
+  }
+}
 </script>
 
 <template>
@@ -62,8 +71,13 @@ const logout = async () => {
       <div class="header-left">
         <h1 class="title">共享单车潮汐预测调度</h1>
         <div class="search-container">
-          <input type="text" placeholder="搜索站点..." class="search-input" />
-          <button class="search-button">搜索</button>
+          <input 
+            type="text" 
+            placeholder="搜索站点..." 
+            class="search-input"
+            v-model="searchQuery"
+          />
+          <button class="search-button" @click="handleSearch">搜索</button>
         </div>
       </div>
       <div class="user-info">
@@ -95,6 +109,7 @@ const logout = async () => {
   width: 100%;
   margin: 0;
   padding: 0;
+  box-sizing: border-box;
 }
 
 .app-header {
@@ -106,7 +121,7 @@ const logout = async () => {
   border-bottom: 1px solid #ccc;
   flex-shrink: 0;
   width: 100%;
-  box-sizing: border-box;  /* 确保padding不会增加总宽度 */
+  box-sizing: border-box;
 }
 
 .header-left {
@@ -114,6 +129,7 @@ const logout = async () => {
   flex-direction: column;
   gap: 8px;
   flex: 1;
+  min-width: 0; /* 防止flex子元素溢出 */
 }
 
 .title {
@@ -125,6 +141,7 @@ const logout = async () => {
 .search-container {
   width: 40%;
   display: flex; 
+  min-width: 0; /* 防止溢出 */
 }
 
 .search-input {
@@ -133,6 +150,7 @@ const logout = async () => {
   border-radius: 4px;
   border: 1px solid #ccc;
   flex: 1;
+  min-width: 0; /* 防止溢出 */
 }
 
 .user-info {
@@ -141,6 +159,7 @@ const logout = async () => {
   align-items: flex-start;
   margin-left: 20px;
   gap: 8px;
+  flex-shrink: 0; /* 防止用户信息被压缩 */
 }
 
 .user-top {
@@ -151,6 +170,7 @@ const logout = async () => {
 
 .welcoming {
   font-size: 14px;
+  white-space: nowrap; /* 防止文字换行 */
 }
 
 .datetime-picker {
@@ -174,6 +194,7 @@ const logout = async () => {
   border: none;
   border-radius: 4px;
   cursor: pointer;
+  white-space: nowrap; /* 防止按钮文字换行 */
 }
 
 .search-button {
@@ -183,6 +204,7 @@ const logout = async () => {
   padding: 6px 10px;
   border-radius: 4px;
   cursor: pointer;
+  white-space: nowrap; /* 防止按钮文字换行 */
 }
 
 .map-container {
@@ -192,5 +214,6 @@ const logout = async () => {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+  position: relative; /* 确保地图容器正确定位 */
 }
 </style>
