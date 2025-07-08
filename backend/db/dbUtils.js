@@ -7,8 +7,8 @@ const genid = new Genid({WorkerId:1})
 // 创建 MySQL 连接池
 const pool = mysql.createPool({
   host: "localhost", // MySQL 服务器地址
-  user: "root",      // 数据库用户名
-  password: "root", // 数据库密码
+  user: "wwh",      // 数据库用户名
+  password: "123456", // 数据库密码
   database: "traffic",  // 数据库名称
   waitForConnections: true, // 是否等待连接
   connectionLimit: 200,      // 连接池最大连接数

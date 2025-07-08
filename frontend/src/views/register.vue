@@ -1,8 +1,9 @@
 <template>
     <div class="register-page">
       <h1>注册</h1>
-      <input v-model="username" placeholder="用户名" />
+      <input v-model="account" placeholder="用户名" />
       <input v-model="password" type="password" placeholder="密码" />
+      <input v-model="email" placeholder="邮箱" />
       <button @click="doRegister">注册</button>
   
       <p class="to-login">
@@ -17,13 +18,23 @@
   import { useRouter } from 'vue-router'
   import { register } from '../api/auth'
   
-  const username = ref('')
+  const account = ref('')
   const password = ref('')
+  const email = ref('')
   const router = useRouter()
   
   async function doRegister() {
     try {
-      const res = await register(username.value, password.value)
+      const res = await register(account.value, password.value, email.value);
+    //   const account = 'admin';     // 写死的用户名
+    // const password = 'admin';        // 写死的密码
+    // const email = '2499814010@qq.com';
+    // console.log('提交的用户名:', account);
+    // console.log('提交的密码:', password);
+
+    // const res = await register(account, password,email);
+    // console.log('后端返回:', res);
+
       if (res.data.code === 200) {
         alert('注册成功，请登录')
         router.push('/login')
