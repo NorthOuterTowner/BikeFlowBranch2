@@ -1,7 +1,7 @@
 const express = require('express');
 const app = express();
 const PORT = 3000;
-const {db} = require("./db/dbUtils")
+const {db,genid} = require("./db/dbUtils")
 
 /*Cross-Origin Requests */
 app.use(function(req,res,next){
@@ -12,10 +12,12 @@ app.use(function(req,res,next){
     else next();
 });
 
+app.use(express.json());
+
 app.use("/test",require("./router/testRouter"));
-app.use("/login",require("./router/adminRouter"));
+app.use("/admin",require("./router/adminRouter"));
 
 
 app.listen(PORT, () => {
-  console.log(`🚀 Server is running at http://localhost:${PORT}`);
+  console.log(`Server is running at http://localhost:${PORT}`);
 });
