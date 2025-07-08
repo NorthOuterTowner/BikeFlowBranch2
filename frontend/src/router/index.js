@@ -9,7 +9,7 @@ import Predict from '../views/dashboard/Predict.vue'
 //import Profile from '../views/dashboard/Profile.vue'
 
 const routes = [
-  { path: '/', redirect: '/dashboard' },    // 默认跳到 dashboard
+  { path: '/', redirect: '/login' },    // 默认跳到 dashboard
   { path: '/login', component: Login },
   { path: '/dashboard', component: Dashboard ,
     children: [
