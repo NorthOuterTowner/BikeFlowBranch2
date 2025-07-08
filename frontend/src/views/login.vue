@@ -24,14 +24,6 @@
   async function doLogin() {
   try {
     const res = await login(account.value, password.value)
-    // const account = 'admin';     // 写死的用户名
-    // const password = 'admin';        // 写死的密码
-    // console.log('提交的用户名:', username);
-    // console.log('提交的密码:', password);
-
-    // const res = await login(account, password);
-    // console.log('后端返回:', res);
-
     if (res.data.code === 200) {
       alert('登录成功')
       // 存储 token 等信息

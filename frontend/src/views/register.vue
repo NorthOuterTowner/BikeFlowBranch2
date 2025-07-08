@@ -26,15 +26,6 @@
   async function doRegister() {
     try {
       const res = await register(account.value, password.value, email.value);
-    //   const account = 'admin';     // 写死的用户名
-    // const password = 'admin';        // 写死的密码
-    // const email = '2499814010@qq.com';
-    // console.log('提交的用户名:', account);
-    // console.log('提交的密码:', password);
-
-    // const res = await register(account, password,email);
-    // console.log('后端返回:', res);
-
       if (res.data.code === 200) {
         alert('注册成功，请登录')
         router.push('/login')
