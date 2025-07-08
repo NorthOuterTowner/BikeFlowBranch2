@@ -125,3 +125,59 @@ query参数
   "bikeNum": 12 //库存量
 }
 ```
+
+3.节点预测数量结果
+（1）获取指定站点在指定时间的单车数量（GET）
+```bash
+http://localhost:3000/predict/station?station_id=JC024&predict_time=2025-01-21T07:02:00Z
+```
+query参数
+station_id	String	要查询的站点唯一ID。	JC019  
+predict_time	String	查询的时间点，ISO 8601格式 2025-01-21T08:45:00Z  
+返回格式
+```bash
+{
+    "station_id": "JC019",
+    "lookup_date": "2025-01-21",
+    "lookup_hour": 8,
+    "status": {
+        "inflow": 2,//入车流
+        "outflow": 15,//出车流
+        "stock": 5 //这个是预测的数量
+    }
+}
+```
+
+（2）获取指定时间所有的站点各自的单车数量（GET）
+```bash
+http://localhost:3000/predict/stations/all?predict_time=2025-01-21T07:02:00Z
+```
+query参数
+predict_time	String	查询的时间点，ISO 8601格式。	2025-01-22T17:10:00Z
+返回格式
+```bash
+{
+    "lookup_date": "2025-01-21",
+    "lookup_hour": 7,
+    "stations_status": [
+        {
+            "station_id": "JC019",
+            "inflow": 1,//入车流
+            "outflow": 12,//出车流
+            "stock": 18 //车辆数量
+        },
+        {
+            "station_id": "JC024",
+            "inflow": 10,
+            "outflow": 2,
+            "stock": 15
+        },
+        {
+            "station_id": "HB601",
+            "inflow": 2,
+            "outflow": 3,
+            "stock": 12
+        }
+    ]
+}
+```
