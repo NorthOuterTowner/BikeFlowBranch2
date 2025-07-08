@@ -22,7 +22,7 @@ onMounted(() => {
 <template>
   <div 
     ref="mapContainer" 
-    style="width: 80%; height: 600px; border: 1px solid #ccc;"
+    style="width: 100%; height: 100%; border: 1px solid #ccc;"
   >
   </div>
 </template>

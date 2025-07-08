@@ -20,3 +20,26 @@ backend部分 是一个基于 Node.js 的后端应用程序，旨在根据需求
     由于当前搭建了与数据库进行连接的框架，因此我假定连接的数据库账号为root，密码为root，数据库名为schedule，具体配置在db/dbUtils.js。若出现“数据库连接失败的问题”，可以将其中的内容改为自己本地存在的某个数据库即可。
 4. 结束进程
    - 在终端中按 `Ctrl + C` 结束当前进程。
+
+## 接口说明
+1.站点位置  
+（1）获取所有的站点位置（GET）
+```bash
+/stations/locations
+```
+返回格式
+```bash
+{
+    "station_id": "JC019",//站点编号
+    "station_name": "Hilltop",//站点名
+    "latitude": 40.7312,//纬度
+    "longitude": -74.0576//精度
+  },
+  {
+    "station_id": "JC024",
+    "station_name": "Pershing Field",
+    "latitude": 40.7427,
+    "longitude": -74.0518
+  },
+  // ... more stations
+```
