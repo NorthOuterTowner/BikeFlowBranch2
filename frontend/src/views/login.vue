@@ -39,29 +39,34 @@
   const loading = ref(false)
   
   async function doLogin() {
-    messageStore.setMessage('', '') // 清空提示
-    try {
-      const res = await login(account.value, password.value)
-      if (res.data.code === 200) {
-        messageStore.setMessage('登录成功', 'success')
-        // 存储 token 等信息
-        localStorage.setItem('token', res.data.data.token)
-        localStorage.setItem('username', res.data.data.account)
+  messageStore.setMessage('', '') // 清空提示
 
-        loading.value = true // 开始加载状态
-        // 等 1.5 秒后再跳转，让用户看到提示
-        setTimeout(() => {
-          loading.value = false // 结束加载状态
-          router.push('/dashboard')
-        }, 1500)
-      } else {
-        messageStore.setMessage('登录失败: ' + res.data.msg, 'error')
-      }
-    } catch (e) {
-      console.error(e)
-      messageStore.setMessage('请求失败，请检查网络或后端服务', 'error')
+  try {
+    const res = await login(account.value, password.value)
+
+    if (res.data.code === 200) {
+      messageStore.setMessage('登录成功', 'success')
+
+      const user = res.data.data
+
+      localStorage.setItem('token', user.token)
+      localStorage.setItem('account', user.account)
+      localStorage.setItem('email', user.email || '')
+
+      loading.value = true // 开始加载状态
+
+      setTimeout(() => {
+        loading.value = false
+        router.push('/dashboard')
+      }, 1500)
+    } else {
+      messageStore.setMessage('登录失败: ' + res.data.msg, 'error')
     }
+  } catch (e) {
+    console.error(e)
+    messageStore.setMessage('请求失败，请检查网络或后端服务', 'error')
   }
+}
 </script>
   
 <style scoped>
