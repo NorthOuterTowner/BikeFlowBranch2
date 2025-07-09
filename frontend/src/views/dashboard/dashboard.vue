@@ -14,14 +14,17 @@ import SideBar from '../../components/SideBar.vue'
 <style scoped>
 .dashboard-layout {
     display: flex;
-    min-height: 100vh;   /* 高度铺满整个视口 */
+    min-height: 100vh;
+    width: 100vw; 
+    margin: 0; 
+    padding: 0; 
 }
 .content {
     flex: 1;
-    padding: 16px;
     height: 100vh; 
-    background: #fff;    /* 背景颜色 */
-    overflow: auto; 
+    background: #fff;
+    overflow: hidden;
+    margin: 0;
+    padding: 0; 
 }
 </style>
-  

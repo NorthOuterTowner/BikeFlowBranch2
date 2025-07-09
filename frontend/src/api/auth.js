@@ -6,17 +6,18 @@ const request = axios.create({
 })
 
 // 用户注册
-export function register(username, password) {
+export function register(username, password, email) {
   return request.post('/admin/register',{
-    username: username,
-    password: password
+    account: username,
+    password: password,
+    email:email
   })
 }
 
 // 用户登录
 export function login(username, password) {
   return request.post('/admin/login', {
-    username: username,
+    account: username,
     password: password
   })
 }

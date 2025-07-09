@@ -45,8 +45,9 @@ router.post('/login', async (req, res) => {
 );
 
 router.post('/register', async (req, res) => {
+  //
   let {account,password,email} = req.body
-  
+  //
   /*参数正确性 */
   if (!account || !password || !email) {
     return res.send({ code: 400, msg: "参数不能为空" });

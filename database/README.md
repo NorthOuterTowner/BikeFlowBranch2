@@ -29,10 +29,7 @@ created_at：创建时间（待定）
 
 id：唯一标识
 
-station_id：站点id
-
 date：日期
-
 
 hour:哪一小时
 

@@ -107,3 +107,59 @@ np.savez_compressed(output_path,
 )
 
 print(f"\n数据集保存完成：{output_path}")
+
+'''
+邻接矩阵
+'''
+import pandas as pd
+import numpy as np
+import pymysql
+import re
+from math import radians, sin, cos, sqrt, atan2
+
+# Haversine 距离函数（单位：km）
+def haversine(lon1, lat1, lon2, lat2):
+    R = 6371
+    lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
+    dlon = lon2 - lon1
+    dlat = lat2 - lat1
+    a = sin(dlat/2)**2 + cos(lat1)*cos(lat2)*sin(dlon/2)**2
+    return R * 2 * atan2(sqrt(a), sqrt(1-a))
+
+# 合法站点ID正则规则（如 HB101）
+pattern = re.compile(r'^[A-Z]{2}\d+$')
+def is_valid_station_id(sid):
+    if pd.isna(sid):
+        return False
+    return bool(pattern.match(str(sid)))
+
+# 读取站点信息
+conn = pymysql.connect(host='localhost', user='zq', password='123456', database='traffic', charset='utf8mb4')
+df = pd.read_sql("SELECT station_id, lat, lng FROM station_info", conn)
+conn.close()
+
+# 清洗不合规站点ID
+df = df[df['station_id'].apply(is_valid_station_id)]
+
+# 排序一致性（和张量保持顺序一致）
+df = df.sort_values('station_id').reset_index(drop=True)
+stations = df['station_id'].tolist()
+num_stations = len(stations)
+
+# 构建邻接矩阵
+A = np.zeros((num_stations, num_stations))
+threshold_km = 1.0  # 最大连接距离（公里）
+
+print("正在构建邻接矩阵...")
+for i in range(num_stations):
+    for j in range(num_stations):
+        if i == j:
+            A[i, j] = 1
+        else:
+            d = haversine(df.loc[i, 'lng'], df.loc[i, 'lat'], df.loc[j, 'lng'], df.loc[j, 'lat'])
+            if d <= threshold_km:
+                A[i, j] = 1  # 也可替换为 1/d
+
+print("邻接矩阵构建完成，形状：", A.shape)
+np.save("./handle/forecast/adj_matrix.npy", A)
+print("已保存为 ./handle/forecast/adj_matrix.npy")
