@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, nextTick } from 'vue'
 import request from '../../api/axios'
 import { useRouter } from 'vue-router'
 import Map from 'ol/Map'
@@ -16,11 +16,14 @@ import Circle from 'ol/style/Circle'
 import Fill from 'ol/style/Fill'
 import Stroke from 'ol/style/Stroke'
 import Text from 'ol/style/Text'
+import StationInfo from '../../views/dashboard/stationInfo.vue'
 
 const mapContainer = ref(null)
 let mapInstance = null
 let vectorLayer = null
 const router = useRouter()
+
+// 状态管理
 const stations = ref([])
 const stationStatusMap = ref({})  // key: station_id, value: { stock, inflow, outflow }
 //const stationBikeCounts = ref(new Map())
@@ -67,11 +70,28 @@ function getStationStyle(station, bikeNum = 0) {
 async function fetchStationLocations() {
   console.log('进到获取站点位置函数')
   try {
+    loading.value = true
     const response = await request.get('/stations/locations')
-    stations.value = response.data || response.data.data
-    console.log('站点位置数据:', stations.value)
+    
+    // 处理可能的不同响应结构
+    const data = response.data
+    if (Array.isArray(data)) {
+      stations.value = data
+    } else if (data && Array.isArray(data.data)) {
+      stations.value = data.data
+    } else {
+      console.error('站点数据格式不正确:', data)
+      stations.value = []
+    }
+    
+    console.log('获取到站点数据:', stations.value)
+    return stations.value
   } catch (error) {
     console.error('获取站点位置失败:', error)
+    stations.value = []
+    return []
+  } finally {
+    loading.value = false
   }
 }
 
@@ -172,22 +192,32 @@ async function fetchAllStationsStatus(predictTime) {
  * 更新地图显示
  */
 function updateMapDisplay() {
-  if (!mapInstance || !vectorLayer) return
+  if (!mapInstance || !vectorLayer || !stations.value.length) {
+    console.warn('地图未初始化或没有站点数据')
+    return
+  }
+
+  // 清除现有要素
   vectorLayer.getSource().clear()
 
+  // 创建新的要素
   const features = stations.value.map(station => {
     // 根据新接口拿到 status
     const status = stationStatusMap.value[station.station_id]
     const bikeNum = status?.stock ?? 0
     // 也可以把 bikeNum 塞到 stationData 里，方便 popup 用
     const feature = new Feature({
-      geometry: new Point(fromLonLat([station.longitude, station.latitude]))
+      geometry: new Point(fromLonLat([
+        parseFloat(station.longitude), 
+        parseFloat(station.latitude)
+      ]))
     })
     feature.setStyle(getStationStyle(station, bikeNum))
     feature.set('stationData', { ...station, bikeNum })  // 如果需要弹窗里用
     return feature
-  })
+  }).filter(Boolean) // 过滤掉空值
 
+  // 添加要素到图层
   vectorLayer.getSource().addFeatures(features)
 }
 
@@ -247,7 +277,7 @@ const handleHourChange = async () => {
  */
 const logout = async () => {
   try {
-    await axios.post('/api/user/logout')
+    await request.post('/api/user/logout')
   } catch (error) {
     console.warn('登出失败，可忽略', error)
   } finally {
@@ -286,7 +316,6 @@ onMounted(async () => {
 })
 
 </script>
-
 
 <template>
   <div class="app-container">
@@ -339,24 +368,35 @@ onMounted(async () => {
       </div>
       <div class="legend-item">
         <div class="legend-color" style="background-color: #4a90e2;"></div>
-        <span>中等 (20-50)</span>
+        <span>多 (20-50)</span>
       </div>
       <div class="legend-item">
         <div class="legend-color" style="background-color: #1a5490;"></div>
-        <span>多 (50+)</span>
+        <span>很多 (50+)</span>
       </div>
     </div>
 
     <!-- 加载状态 -->
     <div v-if="loading" class="loading-overlay">
-      <div class="loading-spinner">加载中...</div>
+      <div class="loading-spinner">
+        <div class="spinner"></div>
+        <span>加载中...</span>
+      </div>
     </div>
 
     <!-- Map -->
     <div ref="mapContainer" class="map-container"></div>
+    
+    <!-- 站点信息弹窗 -->
+    <StationInfo
+      :show="showStationInfoDialog"
+      :station="selectedStation"
+      :date="fixedDate"
+      :hour="selectedHour"
+      @update:show="handleDialogClose"
+    />
   </div>
 </template>
-
 
 <style scoped>
 .app-container {
@@ -418,14 +458,14 @@ onMounted(async () => {
   flex-direction: column;
   align-items: flex-start;
   margin-left: 20px;
-  gap: 8px;
+  gap: 20px;
   flex-shrink: 0; 
 }
 
 .user-top {
   display: flex;
   align-items: center;
-  gap: 40px;
+  gap: 150px;
 }
 
 .welcoming {
@@ -433,18 +473,7 @@ onMounted(async () => {
   white-space: nowrap; 
 }
 
-.datetime-picker {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-.date-input,
-.hour-select {
-  padding: 4px 8px;
-  font-size: 14px;
-}
-
-.logout-button, .search-button, .refresh-button {
+.logout-button, .search-button {
   padding: 6px 12px;
   background-color: #091275;
   color: white;
@@ -452,11 +481,35 @@ onMounted(async () => {
   border-radius: 4px;
   cursor: pointer;
   white-space: nowrap;
+  transition: background-color 0.2s;
 }
 
-.refresh-button:disabled {
-  background-color: #ccc;
-  cursor: not-allowed;
+.logout-button:hover, .search-button:hover {
+  background-color: #0a1580;
+}
+
+.right-time {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.right-time .fixed-date {
+  margin-right: 20px;
+  font-weight: bold;
+}
+
+.right-time select {
+  padding: 6px 10px;
+  font-size: 14px;
+  height: 30px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+}
+
+.disabled-option {
+  color: #999;
+  background-color: #f2f2f2;
 }
 
 .legend {
@@ -500,10 +553,28 @@ onMounted(async () => {
 }
 
 .loading-spinner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
   padding: 20px;
   background-color: white;
   border-radius: 8px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #091275;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
 .map-container {
@@ -517,6 +588,7 @@ onMounted(async () => {
   z-index: 1;
 }
 
+/* OpenLayers 样式覆盖 */
 .map-container :deep(.ol-zoom) {
   position: absolute;
   top: 0.5em;
@@ -580,22 +652,4 @@ onMounted(async () => {
   margin: 2px;
   border-radius: 2px;
 }
-
-.right-time .fixed-date {
-  margin-right: 40px;
-}
-
-.right-time select {
-  padding: 6px 10px;
-  font-size: 16px;
-  height: 30px;
-  border-radius: 4px;
-}
-
-.disabled-option {
-  color: #999;
-  background-color: #f2f2f2;
-}
-
-
 </style>

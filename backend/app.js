@@ -39,6 +39,7 @@ app.use("/admin",require("./router/adminRouter"));
 app.use("/reset",require("./router/resetRouter"));
 app.use("/stations",require("./router/stationsRouter"));
 app.use("/predict",require("./router/predictRouter"));
+app.use("/dispatch",require("./router/dispatch"));
 
 app.listen(PORT, () => {
   console.log(`Server is running at http://localhost:${PORT}`);
