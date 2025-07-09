@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import axios from 'axios'
 import { useRouter } from 'vue-router'
 import Map from 'ol/Map'
@@ -19,8 +19,11 @@ import Text from 'ol/style/Text'
 
 const mapContainer = ref(null)
 let mapInstance = null
+let vectorLayer = null
 const router = useRouter()
 const stations = ref([])
+const stationBikeCounts = ref(new Map()) // 存储站点单车数量
+const loading = ref(false)
 
 // 根据车辆数量获取颜色（深色表示车辆多，浅色表示车辆少）
 function getColorByBikeCount(count) {
@@ -35,7 +38,7 @@ function getColorByBikeCount(count) {
 
 // 获取站点样式
 function getStationStyle(station) {
-  const bikeCount = station.bikeCount || 0 // 假设stations数据中有bikeCount字段
+  const bikeCount = stationBikeCounts.value.get(station.station_id) || 0
   const color = getColorByBikeCount(bikeCount)
   
   return new Style({
@@ -61,6 +64,93 @@ function getStationStyle(station) {
   })
 }
 
+// 获取站点位置数据
+async function fetchStationLocations() {
+  try {
+    const response = await axios.get('/stations/locations')
+    stations.value = response.data
+  } catch (error) {
+    console.error('获取站点位置失败:', error)
+  }
+}
+
+// 获取单个站点的单车数量
+async function fetchStationBikeNum(stationId, date, hour) {
+  try {
+    const response = await axios.get('/stations/bikeNum', {
+      params: {
+        station_id: stationId,
+        date: date,
+        hour: hour
+      }
+    })
+    return response.data.bikeNum || 0
+  } catch (error) {
+    console.error(`获取站点 ${stationId} 单车数量失败:`, error)
+    return 0
+  }
+}
+
+// 获取所有站点的单车数量
+async function fetchAllStationsBikeNum(date, hour) {
+  if (!stations.value.length) return
+
+  loading.value = true
+  const bikeCounts = new Map()
+  
+  try {
+    // 批量获取所有站点的单车数量
+    const promises = stations.value.map(async (station) => {
+      const bikeNum = await fetchStationBikeNum(station.station_id, date, hour)
+      bikeCounts.set(station.station_id, bikeNum)
+    })
+    
+    await Promise.all(promises)
+    stationBikeCounts.value = bikeCounts
+    
+    // 更新地图显示
+    updateMapDisplay()
+  } catch (error) {
+    console.error('获取站点单车数量失败:', error)
+  } finally {
+    loading.value = false
+  }
+}
+
+// 更新地图显示
+function updateMapDisplay() {
+  if (!mapInstance || !vectorLayer) return
+  
+  // 清除现有的features
+  vectorLayer.getSource().clear()
+  
+  // 重新创建features
+  const features = stations.value.map(station => {
+    const feature = new Feature({
+      geometry: new Point(fromLonLat([station.longitude, station.latitude]))
+    })
+    
+    // 设置站点样式
+    feature.setStyle(getStationStyle(station))
+    
+    // 将站点数据存储到feature中，便于后续使用
+    feature.set('stationData', station)
+    
+    return feature
+  })
+  
+  // 添加新的features
+  vectorLayer.getSource().addFeatures(features)
+}
+
+// 解析datetime-local值获取日期和小时
+function parseDateTimeLocal(dateTimeString) {
+  const date = new Date(dateTimeString)
+  const dateStr = date.toISOString().split('T')[0] // YYYY-MM-DD
+  const hour = date.getHours().toString()
+  return { dateStr, hour }
+}
+
 function getNowDatetimeLocal() {
   const now = new Date()
   const year = now.getFullYear()
@@ -69,15 +159,24 @@ function getNowDatetimeLocal() {
   const hours = String(now.getHours()).padStart(2, '0')
   const minutes = String(now.getMinutes()).padStart(2, '0')
 
-  // datetime-local 格式是：YYYY-MM-DDTHH:mm
   return `${year}-${month}-${day}T${hours}:${minutes}`
 }
 
 const dateTime = ref(getNowDatetimeLocal())
 const welcoming = ref('管理员，欢迎您！')
-const searchQuery = ref('')  // 添加搜索查询的响应式数据
+const searchQuery = ref('')
 
-onMounted(() => {
+// 监听时间变化，重新获取数据
+watch(dateTime, async (newDateTime) => {
+  const { dateStr, hour } = parseDateTimeLocal(newDateTime)
+  await fetchAllStationsBikeNum(dateStr, hour)
+}, { immediate: false })
+
+onMounted(async () => {
+  // 先获取站点位置数据
+  await fetchStationLocations()
+  
+  // 初始化地图
   mapInstance = new Map({
     target: mapContainer.value,
     layers: [
@@ -86,70 +185,31 @@ onMounted(() => {
       }),
     ],
     view: new View({
-      center: [-9755221.54, 5141303.88],
+      center: fromLonLat([-74.0576, 40.7312]), // 调整到合适的中心点
       zoom: 11,
       maxZoom: 20,
       minZoom: 3
     }),
-    // 添加这些配置来限制地图的交互区域
-    controls: [], // 可以根据需要添加控件
-    interactions: [] // 可以根据需要添加交互
   })
 
-  // 如果 stations 数据存在才创建图层
-  if (stations.value && stations.value.length > 0) {
-    // 构建矢量图层
-    const features = stations.value.map(station => {
-      const feature = new Feature({
-        geometry: new Point(fromLonLat([station.longitude, station.latitude]))
-      })
-      
-      // 设置站点样式
-      feature.setStyle(getStationStyle(station))
-      
-      // 将站点数据存储到feature中，便于后续使用
-      feature.set('stationData', station)
-      
-      return feature
-    })
+  // 创建矢量图层
+  vectorLayer = new VectorLayer({
+    source: new VectorSource()
+  })
 
-    const vectorLayer = new VectorLayer({
-      source: new VectorSource({
-        features: features
-      }),
-      // 添加这个配置来限制图层的渲染范围
-      extent: undefined, // 或者设置具体的范围
-      // 确保图层不会阻挡其他元素的交互
-      style: (feature) => {
-        return getStationStyle(feature.get('stationData'))
-      }
-    })
-
-    mapInstance.addLayer(vectorLayer)
-  }
-
-  // 重要：限制地图的交互区域，确保不会影响到侧边栏
-  const mapElement = mapContainer.value
-  if (mapElement) {
-    // 设置地图容器的样式，确保不会超出边界
-    mapElement.style.position = 'relative'
-    mapElement.style.overflow = 'hidden'
-    
-    // 监听地图容器的点击事件，阻止事件冒泡到外层
-    mapElement.addEventListener('click', (e) => {
-      e.stopPropagation()
-    })
-  }
+  mapInstance.addLayer(vectorLayer)
+  
+  // 获取初始时间的数据
+  const { dateStr, hour } = parseDateTimeLocal(dateTime.value)
+  await fetchAllStationsBikeNum(dateStr, hour)
 })
 
 const logout = async () => {
   try {
-    await axios.post('/api/user/logout') // 后端登出接口
+    await axios.post('/api/user/logout')
   } catch (error) {
     console.warn('登出失败，可忽略', error)
   }
-
-  // 跳转到登录页
   router.push('/login')
 }
 
@@ -157,8 +217,28 @@ const handleSearch = () => {
   if (searchQuery.value.trim()) {
     console.log('搜索:', searchQuery.value)
     // 在这里添加搜索逻辑
-    // 例如：调用API搜索站点，或者在地图上高亮显示
+    // 例如：在地图上高亮显示匹配的站点
+    const matchedStations = stations.value.filter(station => 
+      station.station_name.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
+      station.station_id.toLowerCase().includes(searchQuery.value.toLowerCase())
+    )
+    
+    if (matchedStations.length > 0) {
+      // 缩放到第一个匹配的站点
+      const station = matchedStations[0]
+      mapInstance.getView().animate({
+        center: fromLonLat([station.longitude, station.latitude]),
+        zoom: 15,
+        duration: 1000
+      })
+    }
   }
+}
+
+// 手动刷新数据
+const refreshData = async () => {
+  const { dateStr, hour } = parseDateTimeLocal(dateTime.value)
+  await fetchAllStationsBikeNum(dateStr, hour)
 }
 
 </script>
@@ -175,6 +255,7 @@ const handleSearch = () => {
             placeholder="搜索站点..." 
             class="search-input"
             v-model="searchQuery"
+            @keyup.enter="handleSearch"
           />
           <button class="search-button" @click="handleSearch">搜索</button>
         </div>
@@ -191,6 +272,9 @@ const handleSearch = () => {
             class="datetime-input"
             placeholder="请选择日期时间"
           />
+          <button class="refresh-button" @click="refreshData" :disabled="loading">
+            {{ loading ? '加载中...' : '刷新' }}
+          </button>
         </div>
       </div>
     </header>
@@ -211,6 +295,11 @@ const handleSearch = () => {
       </div>
     </div>
 
+    <!-- 加载状态 -->
+    <div v-if="loading" class="loading-overlay">
+      <div class="loading-spinner">加载中...</div>
+    </div>
+
     <!-- Map -->
     <div ref="mapContainer" class="map-container"></div>
   </div>
@@ -225,6 +314,7 @@ const handleSearch = () => {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+  position: relative;
 }
 
 .app-header {
@@ -257,7 +347,8 @@ const handleSearch = () => {
 .search-container {
   width: 40%;
   display: flex; 
-  min-width: 0; 
+  min-width: 0;
+  gap: 8px;
 }
 
 .search-input {
@@ -290,11 +381,13 @@ const handleSearch = () => {
 }
 
 .datetime-picker {
-  width: 220px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
 .datetime-input {
-  width: 100%;
+  width: 200px;
   padding: 6px 10px;
   border-radius: 4px;
   border: 1px solid #ccc;
@@ -302,25 +395,19 @@ const handleSearch = () => {
   box-sizing: border-box;
 }
 
-.logout-button {
-  margin-left: 10px;
+.logout-button, .search-button, .refresh-button {
   padding: 6px 12px;
   background-color: #091275;
   color: white;
   border: none;
   border-radius: 4px;
   cursor: pointer;
-  white-space: nowrap; 
+  white-space: nowrap;
 }
 
-.search-button {
-  background-color: #091275;
-  color: white;
-  border: none;
-  padding: 6px 10px;
-  border-radius: 4px;
-  cursor: pointer;
-  white-space: nowrap;
+.refresh-button:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
 }
 
 .legend {
@@ -331,7 +418,7 @@ const handleSearch = () => {
   padding: 10px;
   border-radius: 5px;
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
-  z-index: 10; /* 降低 z-index 值 */
+  z-index: 10;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -350,6 +437,26 @@ const handleSearch = () => {
   border: 2px solid #ffffff;
 }
 
+.loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(255, 255, 255, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.loading-spinner {
+  padding: 20px;
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+}
+
 .map-container {
   flex: 1;
   width: 100%;
@@ -358,7 +465,7 @@ const handleSearch = () => {
   padding: 0;
   box-sizing: border-box;
   position: relative;
-  z-index: 1; /* 为地图容器设置较低的 z-index */
+  z-index: 1;
 }
 
 .map-container :deep(.ol-zoom) {
