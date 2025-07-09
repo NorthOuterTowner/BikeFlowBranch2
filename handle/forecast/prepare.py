@@ -1,5 +1,5 @@
 '''
-构建张量
+构建张量，划分数据集，邻接矩阵
 '''
 import sys
 sys.stdout.reconfigure(encoding='utf-8')
@@ -163,3 +163,8 @@ for i in range(num_stations):
 print("邻接矩阵构建完成，形状：", A.shape)
 np.save("./handle/forecast/adj_matrix.npy", A)
 print("已保存为 ./handle/forecast/adj_matrix.npy")
+
+import json
+with open('./handle/forecast/station_ids.json', 'w', encoding='utf-8') as f:
+    json.dump(stations, f, ensure_ascii=False)
+print("站点ID列表已保存为 station_ids.json")
