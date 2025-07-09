@@ -37,13 +37,20 @@ router.post('/change', authMiddleware, async (req, res) => {
         await db.async.run(changeSql2,[number,endStation,dispatchDate,dispatchHour])
         res.send({
             code:200,
-            msg:"调度完成"
+            msg:"开始进行调度"
         })
     }else{
-        res.send({
-            code:500,
-            msg:"调度失败"
-        })
+        if(startRows.length == 0 || endRows.length == 0){
+            res.send({
+                code:500,
+                msg:"无效站点"
+            })
+        }else{
+            res.send({
+                code:500,
+                msg:"调度失败"
+            })
+        }
     }
     
 });
