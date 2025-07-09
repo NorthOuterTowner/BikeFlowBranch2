@@ -4,10 +4,10 @@ import { createRouter, createWebHistory } from 'vue-router'
 import Dashboard from '../views/dashboard/dashboard.vue'
 import Login from '../views/login.vue'
 import Register from '../views/register.vue'
-import MapView from '../views/dashboard/MapView.vue'
+import MapView from '../views/dashboard/mapView.vue'
 import Predict from '../views/dashboard/Predict.vue'
 import Settings from '../views/dashboard/Settings.vue'
-import Profile from '../views/dashboard/Profile.vue'
+import Profile from '../views/dashboard/profile.vue'
 
 const routes = [
   { path: '/', redirect: '/login' },    // 默认跳到 dashboard
