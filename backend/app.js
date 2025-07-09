@@ -6,6 +6,13 @@ const {db,genid} = require("./db/dbUtils")
 const redis = require("redis")
 const redisClient = require("./db/redis")
 
+/* 🌟 全局打印收到的所有请求 */
+app.use((req, res, next) => {
+  console.log(`请求路径: ${req.method} ${req.originalUrl}`)
+  next()
+})
+
+
 /* API rate limit */
 const limiter = rateLimit({
 	windowMs: 1000, // 1 second

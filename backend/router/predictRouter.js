@@ -123,6 +123,10 @@ router.get('/stations/all', authMiddleware,async (req, res) => {
         const params = [dateForQuery, hourForQuery];
         const { rows } = await db.async.all(sql, params);
 
+        console.log('数据库查询参数:', params);
+        console.log('数据库查询结果:', rows);
+
+
         if (!rows || rows.length === 0) {
             return res.status(404).json({
                 error: `No status data found for any station on ${dateForQuery} at hour ${hourForQuery}.`
@@ -149,3 +153,4 @@ router.get('/stations/all', authMiddleware,async (req, res) => {
 });
 
 module.exports = router;
+

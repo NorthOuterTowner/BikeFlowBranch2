@@ -22,18 +22,28 @@ let mapInstance = null
 let vectorLayer = null
 const router = useRouter()
 const stations = ref([])
-const stationBikeCounts = ref(new Map())
+const stationStatusMap = ref({})  // key: station_id, value: { stock, inflow, outflow }
+//const stationBikeCounts = ref(new Map())
 const loading = ref(false)
+const welcoming = ref('管理员，欢迎您！')
+const searchQuery = ref('')
+const fixedDate = '2025-01-25'
+const currentHour = new Date().getHours()
+const selectedHour = ref(currentHour.toString().padStart(2, '0'))
 
+/**
+ * 根据单车数量返回对应颜色
+ * @param count 单车数量
+ */
 function getColorByBikeCount(count) {
   if (count >= 50) return '#1a5490'
   else if (count >= 20) return '#4a90e2'
   else return '#87ceeb'
 }
 
-function getStationStyle(station) {
-  const bikeCount = stationBikeCounts.value.get(station.station_id) || 0
-  const color = getColorByBikeCount(bikeCount)
+function getStationStyle(station, bikeNum = 0) {
+  //const bikeCount = stationBikeCounts.value.get(station.station_id) || 0
+  const color = getColorByBikeCount(bikeNum)
 
   return new Style({
     image: new Circle({
@@ -42,7 +52,7 @@ function getStationStyle(station) {
       stroke: new Stroke({ color: '#ffffff', width: 2 })
     }),
     text: new Text({
-      text: bikeCount.toString(),
+      text: bikeNum.toString(),
       fill: new Fill({ color: '#ffffff' }),
       font: '12px Arial',
       textAlign: 'center',
@@ -51,7 +61,11 @@ function getStationStyle(station) {
   })
 }
 
+/**
+ * 获取所有站点位置
+ */
 async function fetchStationLocations() {
+  console.log('进到获取站点位置函数')
   try {
     const response = await request.get('/stations/locations')
     stations.value = response.data || response.data.data
@@ -61,97 +75,190 @@ async function fetchStationLocations() {
   }
 }
 
-async function fetchStationBikeNum(stationId, date, hour) {
+// async function fetchStationBikeNum(stationId, date, hour) {
+//   try {
+//     const response = await request.get('/stations/bikeNum', {
+//       params: { station_id: stationId, date, hour }
+//     })
+//     return response.data.bikeNum || 0
+//   } catch (error) {
+//     console.error(`获取站点 ${stationId} 单车数量失败:`, error)
+//     return 0
+//   }
+// }
+
+// async function fetchAllStationsBikeNum(date, hour) {
+//   if (!stations.value.length) return
+
+//   loading.value = true
+//   const bikeCounts = new Map()
+
+//   try {
+//     const promises = stations.value.map(async station => {
+//       const bikeNum = await fetchStationBikeNum(station.station_id, date, hour)
+//       bikeCounts.set(station.station_id, bikeNum)
+//     })
+//     await Promise.all(promises)
+//     stationBikeCounts.value = bikeCounts
+//     updateMapDisplay()
+//   } catch (error) {
+//     console.error('获取站点单车数量失败:', error)
+//   } finally {
+//     loading.value = false
+//   }
+// }
+
+/**
+ * 获取指定时间所有站点的单车数量和流量
+ * @param predictTime 预测时间，格式为 'HH:mm:ss'(疑似)
+ */
+async function fetchAllStationsStatus(predictTime) {
   try {
-    const response = await request.get('/stations/bikeNum', {
-      params: { station_id: stationId, date, hour }
+    loading.value = true
+    const res = await request.get('/predict/stations/all', {
+      params: { predict_time: predictTime }
     })
-    return response.data.bikeNum || 0
-  } catch (error) {
-    console.error(`获取站点 ${stationId} 单车数量失败:`, error)
-    return 0
-  }
-}
-
-async function fetchAllStationsBikeNum(date, hour) {
-  if (!stations.value.length) return
-
-  loading.value = true
-  const bikeCounts = new Map()
-
-  try {
-    const promises = stations.value.map(async station => {
-      const bikeNum = await fetchStationBikeNum(station.station_id, date, hour)
-      bikeCounts.set(station.station_id, bikeNum)
+    // 转成 { station_id: { stock, inflow, outflow } }
+    const newMap = {}
+    res.data.stations_status.forEach(item => {
+      newMap[item.station_id] = {
+        stock: item.stock,
+        inflow: item.inflow,
+        outflow: item.outflow
+      }
     })
-    await Promise.all(promises)
-    stationBikeCounts.value = bikeCounts
+    stationStatusMap.value = newMap
+    console.log('站点状态:', stationStatusMap.value)
     updateMapDisplay()
-  } catch (error) {
-    console.error('获取站点单车数量失败:', error)
+      } catch (error) {
+    console.error('获取所有站点状态失败:', error.response || error.message ||error)
+    console.log('请求地址:', '/predict/stations/all', '参数:', predictTime)
+
   } finally {
     loading.value = false
   }
+  // loading.value = true
+  // try {
+  //   // 这里模拟假数据，格式参考你接口返回结构
+  //   const fakeResponse = {
+  //     data: {
+  //       stations_status: [
+  //         { station_id: 'JC019', stock: 5, inflow: 2, outflow: 1 },
+  //         { station_id: 'HB611', stock: 3, inflow: 1, outflow: 2 },
+  //         { station_id: 'JC076', stock: 7, inflow: 3, outflow: 1 },
+  //         // 更多站点数据按需补充
+  //       ]
+  //     }
+  //   }
+  //   const newMap = {}
+  //   fakeResponse.data.stations_status.forEach(item => {
+  //     newMap[item.station_id] = {
+  //       stock: item.stock,
+  //       inflow: item.inflow,
+  //       outflow: item.outflow
+  //     }
+  //   })
+  //   stationStatusMap.value = newMap
+  //   console.log('站点状态（假数据）:', stationStatusMap.value)
+  //   updateMapDisplay()
+  // } catch (error) {
+  //   console.error('假数据处理出错:', error)
+  // } finally {
+  //   loading.value = false
+  // }
 }
 
+/**
+ * 更新地图显示
+ */
 function updateMapDisplay() {
   if (!mapInstance || !vectorLayer) return
   vectorLayer.getSource().clear()
 
   const features = stations.value.map(station => {
+    // 根据新接口拿到 status
+    const status = stationStatusMap.value[station.station_id]
+    const bikeNum = status?.stock ?? 0
+    // 也可以把 bikeNum 塞到 stationData 里，方便 popup 用
     const feature = new Feature({
       geometry: new Point(fromLonLat([station.longitude, station.latitude]))
     })
-    feature.setStyle(getStationStyle(station))
-    feature.set('stationData', station)
+    feature.setStyle(getStationStyle(station, bikeNum))
+    feature.set('stationData', { ...station, bikeNum })  // 如果需要弹窗里用
     return feature
   })
 
   vectorLayer.getSource().addFeatures(features)
 }
 
-const fixedDate = '2025-01-25'
-const currentHour = new Date().getHours()
-const selectedHour = ref(currentHour.toString().padStart(2, '0'))
+/**
+ * 处理小时选择变化
+ */
 const handleHourChange = async () => {
-  await fetchAllStationsBikeNum(fixedDate, selectedHour.value)
+  const predictTime = `${fixedDate}T${selectedHour.value}:00:00Z`
+  await fetchAllStationsStatus(predictTime)
 }
 
-const welcoming = ref('管理员，欢迎您！')
-const searchQuery = ref('')
-
-const handleSearch = async () => {
+/**
+ * 搜索站点功能
+ */
+ const handleSearch = () => {
   if (!searchQuery.value.trim()) return
-
-  // 调用 Nominatim API 进行地名搜索
-  const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery.value)}`
-  try {
-    const res = await fetch(url)
-    const results = await res.json()
-    if (results && results.length > 0) {
-      const { lat, lon } = results[0]
-      mapInstance.getView().animate({
-        center: fromLonLat([parseFloat(lon), parseFloat(lat)]),
-        zoom: 15,
-        duration: 1000
-      })
-    } else {
-      alert('未找到相关地点')
-    }
-  } catch (e) {
-    console.error('搜索地点失败:', e)
+  const matchedStations = stations.value.filter(station =>
+    station.station_name.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
+    station.station_id.toLowerCase().includes(searchQuery.value.toLowerCase())
+  )
+  if (matchedStations.length > 0) {
+    const station = matchedStations[0]
+    mapInstance.getView().animate({
+      center: fromLonLat([station.longitude, station.latitude]),
+      zoom: 15,
+      duration: 1000
+    })
+  } else {
+    alert('未找到相关站点')
   }
 }
+// const handleSearch = async () => {
+//   if (!searchQuery.value.trim()) return
 
+//   // 调用 Nominatim API 进行地名搜索
+//   const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery.value)}`
+//   try {
+//     const res = await fetch(url)
+//     const results = await res.json()
+//     if (results && results.length > 0) {
+//       const { lat, lon } = results[0]
+//       mapInstance.getView().animate({
+//         center: fromLonLat([parseFloat(lon), parseFloat(lat)]),
+//         zoom: 15,
+//         duration: 1000
+//       })
+//     } else {
+//       alert('未找到相关地点')
+//     }
+//   } catch (e) {
+//     console.error('搜索地点失败:', e)
+//   }
+// }
+
+/**
+ * 登出功能
+ */
 const logout = async () => {
   try {
     await axios.post('/api/user/logout')
   } catch (error) {
     console.warn('登出失败，可忽略', error)
+  } finally {
+    router.push('/login')
   }
-  router.push('/login')
 }
 
+/**
+ * 初始化
+ * 组件挂载时获取站点位置和初始化地图
+ */
 onMounted(async () => {
   await fetchStationLocations()
 
@@ -169,12 +276,15 @@ onMounted(async () => {
   vectorLayer = new VectorLayer({ source: new VectorSource() })
   mapInstance.addLayer(vectorLayer)
 
-  stations.value.forEach(station => {
-    stationBikeCounts.value.set(station.station_id, 0)
-  })
-  updateMapDisplay()
-  await fetchAllStationsBikeNum(fixedDate, selectedHour.value)
+  // stations.value.forEach(station => {
+  //   stationBikeCounts.value.set(station.station_id, 0)
+  // })
+  // updateMapDisplay()
+  // 默认加载当前小时数据
+  const predictTime = `${fixedDate}T${selectedHour.value}:00:00Z`
+  await fetchAllStationsStatus(predictTime)
 })
+
 </script>
 
 
@@ -205,7 +315,7 @@ onMounted(async () => {
         <label>日期：</label>
         <span class="fixed-date">{{ fixedDate }}</span>
         <label>选择时段：</label>
-      <select v-model="selectedHour" @change="handleHourChange">
+        <select v-model="selectedHour" @change="handleHourChange">
         <option
           v-for="h in 24"
           :key="h"
@@ -213,9 +323,9 @@ onMounted(async () => {
           :disabled="(h - 1) < currentHour"
           :class="{ 'disabled-option': (h - 1) < currentHour }"
         >
-          {{ (h - 1).toString().padStart(2, '0') }}:00
-        </option>
-      </select>
+            {{ (h - 1).toString().padStart(2, '0') }}:00
+          </option>
+        </select>
 
       </div>
       </div>

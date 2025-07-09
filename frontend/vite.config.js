@@ -6,14 +6,17 @@ export default defineConfig({
   plugins: [vue()],
   server: {
     proxy: {
-      '/stations': {
-        target: 'http://localhost:3000',  // 这里替换成你后端真实地址
+      '/predict': {
+        target: 'http://localhost:3000',
         changeOrigin: true
-        // 如果后端接口就是 /stations/xxx，不需要 rewrite
-        // 如果后端只提供 /xxx，就需要加：
-        // rewrite: (path) => path.replace(/^\/stations/, '')
+        // 不需要 rewrite，前端写 /predict/xxx，后端也就是 /predict/xxx
+      },
+      '/stations': {
+        target: 'http://localhost:3000',
+        changeOrigin: true
       }
-    }
+    } 
+    
   }
 })
 
