@@ -13,9 +13,13 @@
     "crypto": "^1.0.1",
     "dotenv": "^17.1.0",
     "express": "^5.1.0",
+    "express-rate-limit": "^7.5.1",
     "mysql2": "^3.14.1",
     "nodemailer": "^7.0.5",
     "redis": "^5.5.6",
     "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "@express-rate-limit/tsconfig": "^1.0.2"
   }
 }
