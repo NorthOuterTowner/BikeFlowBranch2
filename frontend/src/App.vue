@@ -1,7 +1,21 @@
 <template>
-  <router-view />   <!-- 根据路由切换页面：先显示 Login.vue，登录后显示 Dashboard.vue -->
+  <n-config-provider :theme-overrides="themeOverrides">
+    <router-view />
+  </n-config-provider>
 </template>
 
+<script setup>
+  import { NConfigProvider } from 'naive-ui'
+
+  const themeOverrides = {
+    common: {
+      primaryColor: '#0556a7',
+      primaryColorHover: '#0b5fb3',
+      primaryColorPressed: '#044c8c',
+      primaryColorSuppl: '#0556a7'
+    }
+  }
+</script>
 
 <style>
 /* 全局样式重置 */
