@@ -2,64 +2,167 @@
 import { ref, onMounted } from 'vue'
 import axios from 'axios'
 import { useRouter } from 'vue-router'
-import 'ol/ol.css'
 import Map from 'ol/Map'
 import View from 'ol/View'
 import TileLayer from 'ol/layer/Tile'
-import OSM from 'ol/source/OSM' 
+import OSM from 'ol/source/OSM'
+import { fromLonLat } from 'ol/proj'
+import Feature from 'ol/Feature'
+import Point from 'ol/geom/Point'
+import VectorLayer from 'ol/layer/Vector'
+import VectorSource from 'ol/source/Vector'
+import Style from 'ol/style/Style'
+import Circle from 'ol/style/Circle'
+import Fill from 'ol/style/Fill'
+import Stroke from 'ol/style/Stroke'
+import Text from 'ol/style/Text'
 
 const mapContainer = ref(null)
 let mapInstance = null
+let vectorLayer = null
 const router = useRouter()
+const stations = ref([])
+const stationBikeCounts = ref(new Map())
+const loading = ref(false)
 
-function getNowDatetimeLocal() {
-  const now = new Date()
-  const year = now.getFullYear()
-  const month = String(now.getMonth() + 1).padStart(2, '0')
-  const day = String(now.getDate()).padStart(2, '0')
-  const hours = String(now.getHours()).padStart(2, '0')
-  const minutes = String(now.getMinutes()).padStart(2, '0')
-  // datetime-local 格式是：YYYY-MM-DDTHH:mm
-  return `${year}-${month}-${day}T${hours}:${minutes}`
+function getColorByBikeCount(count) {
+  if (count >= 50) return '#1a5490'
+  else if (count >= 20) return '#4a90e2'
+  else return '#87ceeb'
 }
 
-const dateTime = ref(getNowDatetimeLocal())
-const welcoming = ref('管理员，欢迎您！')
-const searchQuery = ref('')  // 添加搜索查询的响应式数据
+function getStationStyle(station) {
+  const bikeCount = stationBikeCounts.value.get(station.station_id) || 0
+  const color = getColorByBikeCount(bikeCount)
 
-onMounted(() => {
+  return new Style({
+    image: new Circle({
+      radius: 8,
+      fill: new Fill({ color }),
+      stroke: new Stroke({ color: '#ffffff', width: 2 })
+    }),
+    text: new Text({
+      text: bikeCount.toString(),
+      fill: new Fill({ color: '#ffffff' }),
+      font: '12px Arial',
+      textAlign: 'center',
+      textBaseline: 'middle'
+    })
+  })
+}
+
+async function fetchStationLocations() {
+  try {
+    const response = await axios.get('/stations/locations')
+    stations.value = response.data
+  } catch (error) {
+    console.error('获取站点位置失败:', error)
+  }
+}
+
+async function fetchStationBikeNum(stationId, date, hour) {
+  try {
+    const response = await axios.get('/stations/bikeNum', {
+      params: { station_id: stationId, date, hour }
+    })
+    return response.data.bikeNum || 0
+  } catch (error) {
+    console.error(`获取站点 ${stationId} 单车数量失败:`, error)
+    return 0
+  }
+}
+
+async function fetchAllStationsBikeNum(date, hour) {
+  if (!stations.value.length) return
+
+  loading.value = true
+  const bikeCounts = new Map()
+
+  try {
+    const promises = stations.value.map(async station => {
+      const bikeNum = await fetchStationBikeNum(station.station_id, date, hour)
+      bikeCounts.set(station.station_id, bikeNum)
+    })
+    await Promise.all(promises)
+    stationBikeCounts.value = bikeCounts
+    updateMapDisplay()
+  } catch (error) {
+    console.error('获取站点单车数量失败:', error)
+  } finally {
+    loading.value = false
+  }
+}
+
+function updateMapDisplay() {
+  if (!mapInstance || !vectorLayer) return
+  vectorLayer.getSource().clear()
+
+  const features = stations.value.map(station => {
+    const feature = new Feature({
+      geometry: new Point(fromLonLat([station.longitude, station.latitude]))
+    })
+    feature.setStyle(getStationStyle(station))
+    feature.set('stationData', station)
+    return feature
+  })
+
+  vectorLayer.getSource().addFeatures(features)
+}
+
+// 固定日期和当前小时
+const fixedDate = '2025-01-25'
+const selectedHour = ref(new Date().getHours().toString().padStart(2, '0'))
+
+const handleHourChange = async () => {
+  await fetchAllStationsBikeNum(fixedDate, selectedHour.value)
+}
+
+const welcoming = ref('管理员，欢迎您！')
+const searchQuery = ref('')
+
+onMounted(async () => {
+  await fetchStationLocations()
+
   mapInstance = new Map({
     target: mapContainer.value,
-    layers: [
-      new TileLayer({
-        source: new OSM(), // OpenStreetMap 图层
-      }),
-    ],
+    layers: [new TileLayer({ source: new OSM() })],
     view: new View({
-      center: [-9755221.54, 5141303.88],
+      center: fromLonLat([-74.0576, 40.7312]),
       zoom: 11,
       maxZoom: 20,
       minZoom: 3
-    }),
+    })
   })
+
+  vectorLayer = new VectorLayer({ source: new VectorSource() })
+  mapInstance.addLayer(vectorLayer)
+
+  await fetchAllStationsBikeNum(fixedDate, selectedHour.value)
 })
 
 const logout = async () => {
   try {
-    await axios.post('/api/user/logout') // 后端登出接口
+    await axios.post('/api/user/logout')
   } catch (error) {
     console.warn('登出失败，可忽略', error)
   }
-
-  // 跳转到登录页
   router.push('/login')
 }
 
 const handleSearch = () => {
   if (searchQuery.value.trim()) {
-    console.log('搜索:', searchQuery.value)
-    // 在这里添加搜索逻辑
-    // 例如：调用API搜索站点，或者在地图上高亮显示
+    const matchedStations = stations.value.filter(station =>
+      station.station_name.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
+      station.station_id.toLowerCase().includes(searchQuery.value.toLowerCase())
+    )
+    if (matchedStations.length > 0) {
+      const station = matchedStations[0]
+      mapInstance.getView().animate({
+        center: fromLonLat([station.longitude, station.latitude]),
+        zoom: 15,
+        duration: 1000
+      })
+    }
   }
 }
 </script>
@@ -76,6 +179,7 @@ const handleSearch = () => {
             placeholder="搜索站点..." 
             class="search-input"
             v-model="searchQuery"
+            @keyup.enter="handleSearch"
           />
           <button class="search-button" @click="handleSearch">搜索</button>
         </div>
@@ -85,21 +189,46 @@ const handleSearch = () => {
           <span class="welcoming">{{ welcoming }}</span>
           <button class="logout-button" @click="logout">退出</button>
         </div>
-        <div class="datetime-picker">
-          <input 
-            type="datetime-local" 
-            v-model="dateTime" 
-            class="datetime-input"
-            placeholder="请选择日期时间"
-          />
-        </div>
+
+      <div class="right-time">
+        <label>日期：</label>
+        <span class="fixed-date">{{ fixedDate }}</span>
+        <label>选择时段：</label>
+        <select v-model="selectedHour" @change="handleHourChange">
+          <option v-for="h in 24" :key="h" :value="(h - 1).toString().padStart(2, '0')">
+            {{ (h - 1).toString().padStart(2, '0') }}:00
+          </option>
+        </select>
+      </div>
       </div>
     </header>
+
+    <!-- 图例 -->
+    <div class="legend">
+      <div class="legend-item">
+        <div class="legend-color" style="background-color: #87ceeb;"></div>
+        <span>少 (0-20)</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-color" style="background-color: #4a90e2;"></div>
+        <span>中等 (20-50)</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-color" style="background-color: #1a5490;"></div>
+        <span>多 (50+)</span>
+      </div>
+    </div>
+
+    <!-- 加载状态 -->
+    <div v-if="loading" class="loading-overlay">
+      <div class="loading-spinner">加载中...</div>
+    </div>
 
     <!-- Map -->
     <div ref="mapContainer" class="map-container"></div>
   </div>
 </template>
+
 
 <style scoped>
 .app-container {
@@ -110,6 +239,7 @@ const handleSearch = () => {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+  position: relative;
 }
 
 .app-header {
@@ -121,6 +251,7 @@ const handleSearch = () => {
   border-bottom: 1px solid #ccc;
   flex-shrink: 0;
   width: 100%;
+  z-index: 50;
   box-sizing: border-box;
 }
 
@@ -129,7 +260,7 @@ const handleSearch = () => {
   flex-direction: column;
   gap: 8px;
   flex: 1;
-  min-width: 0; /* 防止flex子元素溢出 */
+  min-width: 0; 
 }
 
 .title {
@@ -141,7 +272,8 @@ const handleSearch = () => {
 .search-container {
   width: 40%;
   display: flex; 
-  min-width: 0; /* 防止溢出 */
+  min-width: 0;
+  gap: 8px;
 }
 
 .search-input {
@@ -150,7 +282,7 @@ const handleSearch = () => {
   border-radius: 4px;
   border: 1px solid #ccc;
   flex: 1;
-  min-width: 0; /* 防止溢出 */
+  min-width: 0; 
 }
 
 .user-info {
@@ -159,7 +291,7 @@ const handleSearch = () => {
   align-items: flex-start;
   margin-left: 20px;
   gap: 8px;
-  flex-shrink: 0; /* 防止用户信息被压缩 */
+  flex-shrink: 0; 
 }
 
 .user-top {
@@ -170,41 +302,80 @@ const handleSearch = () => {
 
 .welcoming {
   font-size: 14px;
-  white-space: nowrap; /* 防止文字换行 */
+  white-space: nowrap; 
 }
 
 .datetime-picker {
-  width: 220px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.date-input,
+.hour-select {
+  padding: 4px 8px;
+  font-size: 14px;
 }
 
-.datetime-input {
-  width: 100%;
-  padding: 6px 10px;
-  border-radius: 4px;
-  border: 1px solid #ccc;
-  cursor: pointer;
-  box-sizing: border-box;
-}
-
-.logout-button {
-  margin-left: 10px;
+.logout-button, .search-button, .refresh-button {
   padding: 6px 12px;
   background-color: #091275;
   color: white;
   border: none;
   border-radius: 4px;
   cursor: pointer;
-  white-space: nowrap; /* 防止按钮文字换行 */
+  white-space: nowrap;
 }
 
-.search-button {
-  background-color: #091275;
-  color: white;
-  border: none;
-  padding: 6px 10px;
-  border-radius: 4px;
-  cursor: pointer;
-  white-space: nowrap; /* 防止按钮文字换行 */
+.refresh-button:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+.legend {
+  position: absolute;
+  top: 120px;
+  right: 20px;
+  background-color: rgba(255, 255, 255, 0.9);
+  padding: 10px;
+  border-radius: 5px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.legend-color {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+}
+
+.loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(255, 255, 255, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.loading-spinner {
+  padding: 20px;
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
 }
 
 .map-container {
@@ -214,6 +385,82 @@ const handleSearch = () => {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
-  position: relative; /* 确保地图容器正确定位 */
+  position: relative;
+  z-index: 1;
 }
+
+.map-container :deep(.ol-zoom) {
+  position: absolute;
+  top: 0.5em;
+  left: 0.5em;
+  background: rgba(255,255,255,.4);
+  border-radius: 4px;
+  padding: 2px;
+}
+
+.map-container :deep(.ol-zoom button) {
+  display: block;
+  margin: 1px;
+  padding: 0;
+  color: white;
+  font-size: 1.14em;
+  font-weight: 700;
+  text-decoration: none;
+  text-align: center;
+  height: 1.375em;
+  width: 1.375em;
+  background-color: rgba(0,60,136,.5);
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.map-container :deep(.ol-zoom button:hover) {
+  background-color: rgba(0,60,136,.7);
+}
+
+.map-container :deep(.ol-zoom button:focus) {
+  background-color: rgba(0,60,136,.7);
+}
+
+.map-container :deep(.ol-attribution) {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  max-width: calc(100% - 1.3em);
+  display: flex;
+  flex-flow: row-reverse;
+  align-items: center;
+}
+
+.map-container :deep(.ol-attribution ul) {
+  margin: 0;
+  padding: 1px 0.5em;
+  color: #000;
+  text-shadow: 0 1px 0 rgba(255,255,255,.9);
+  font-size: 12px;
+}
+
+.map-container :deep(.ol-attribution button) {
+  flex-shrink: 0;
+  color: #000;
+  background-color: rgba(255,255,255,.5);
+  border: none;
+  outline: none;
+  cursor: pointer;
+  padding: 2px;
+  margin: 2px;
+  border-radius: 2px;
+}
+.right-time .fixed-date {
+  margin-right: 40px;
+}
+.right-time select {
+  padding: 6px 10px;
+  font-size: 16px;
+  height: 30px;
+  border-radius: 4px;
+}
+
+
 </style>
