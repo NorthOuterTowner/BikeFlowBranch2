@@ -84,6 +84,24 @@ backend部分 是一个基于 Node.js 的后端应用程序，旨在根据需求
 }
 
 ```
+（3）重置账号（POST）
+```bash
+/reset/account
+```
+输入格式
+```bash
+{
+  "oldName": "admin", //用户名
+  "newName": "admin2", //新用户名
+}
+```
+返回格式
+```bash
+{
+  "code": 200, //状态码
+  "msg": "账号重置成功"
+}
+```
 2.站点位置  
 （1）获取所有的站点位置（GET）
 ```bash
@@ -105,7 +123,7 @@ backend部分 是一个基于 Node.js 的后端应用程序，旨在根据需求
   },
   // ... more stations
 ```
-3.站点单车数量
+3.站点实际单车数量
 （1）获取指定站点在指定时间的单车数量（GET）
 ```bash
 /stations/bikeNum
@@ -126,7 +144,7 @@ query参数
 }
 ```
 
-3.节点预测数量结果
+4.节点预测数量结果
 （1）获取指定站点在指定时间的单车数量（GET）
 ```bash
 http://localhost:3000/predict/station?station_id=JC024&predict_time=2025-01-21T07:02:00Z
