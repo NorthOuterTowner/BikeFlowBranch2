@@ -6,8 +6,8 @@ import Login from '../views/login.vue'
 import Register from '../views/register.vue'
 import MapView from '../views/dashboard/MapView.vue'
 import Predict from '../views/dashboard/Predict.vue'
-//import Settings from '../views/dashboard/Settings.vue'
-//import Profile from '../views/dashboard/Profile.vue'
+import Settings from '../views/dashboard/Settings.vue'
+import Profile from '../views/dashboard/Profile.vue'
 
 const routes = [
   { path: '/', redirect: '/login' },    // 默认跳到 dashboard
@@ -18,8 +18,8 @@ const routes = [
         { path: '', redirect: '/dashboard/mapView' },  // 默认进来显示地图页
         { path: 'mapView', component: MapView },
         { path: 'predict', component: Predict },
-       // { path: 'settings', component: Settings },
-       // { path: 'profile', component: Profile },
+        { path: 'settings', component: Settings },
+        { path: 'profile', component: Profile },
     ]
   },
 ]
