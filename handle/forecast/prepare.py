@@ -6,6 +6,7 @@ sys.stdout.reconfigure(encoding='utf-8')
 import pandas as pd
 import numpy as np
 import pymysql
+import json
 
 # 参数设置
 timesteps = 12     # 输入过去12小时
@@ -105,6 +106,20 @@ np.savez_compressed(output_path,
     X_val=X_val, Y_val=Y_val,
     X_test=X_test, Y_test=Y_test
 )
+timestamps = full_time_index  # 所有小时
+sample_times = [
+    str(timestamps[i + timesteps])  # 预测时间是 x 输入后第 timesteps 小时
+    for i in range(len(X))
+]
+
+# 只取测试集部分的时间点
+test_times = sample_times[train_size + val_size:]
+
+# 保存为 json
+with open('./handle/forecast/predict_times.json', 'w', encoding='utf-8') as f:
+    json.dump(test_times, f, ensure_ascii=False)
+
+print(f"预测时间列表已保存为 predict_times.json，共 {len(test_times)} 条")
 
 print(f"\n数据集保存完成：{output_path}")
 
