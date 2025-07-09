@@ -90,20 +90,24 @@ onMounted(() => {
 }
 
 .profile-container {
-  max-width: 500px;
-  margin: 30px auto;
-  padding: 20px;
+  max-width: 600px;
+  margin: 50px auto;
+  padding: 30px;
+  background-color: #f9f9f9; 
+  border-radius: 12px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15); 
+  text-align: center;
 }
 
 .profile-table {
   width: 100%;
-  height:100%;
   border-collapse: collapse;
   background-color: #ffffff;
   border-radius: 8px;
   overflow: hidden;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  font-size: 18px;
 }
+
 
 .profile-title {
   background-color: #091275;
