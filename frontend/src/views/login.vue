@@ -42,11 +42,12 @@
     messageStore.setMessage('', '') // 清空提示
     try {
       const res = await login(account.value, password.value)
+      console.log('登录返回data:', res.data.data)  // 调试
       if (res.data.code === 200) {
         messageStore.setMessage('登录成功', 'success')
         // 存储 token 等信息
         localStorage.setItem('token', res.data.data.token)
-        localStorage.setItem('username', res.data.data.account)
+        localStorage.setItem('account', res.data.data.account)
 
         loading.value = true // 开始加载状态
         // 等 1.5 秒后再跳转，让用户看到提示
