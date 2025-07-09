@@ -79,7 +79,7 @@ backend部分 是一个基于 Node.js 的后端应用程序，旨在根据需求
       "account": "admin",
       "password": "",
       "token": "b8aeb113-f7b0-47ab-a373-b8719888bcf0",
-      "email": null
+      "email": "23301xxx@bjtu.edu.cn"
     }
 }
 
