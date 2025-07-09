@@ -111,7 +111,9 @@ function updateMapDisplay() {
 
 // 固定日期和当前小时
 const fixedDate = '2025-01-25'
-const selectedHour = ref(new Date().getHours().toString().padStart(2, '0'))
+const currentHour = new Date().getHours()
+const selectedHour = ref(currentHour.toString().padStart(2, '0'))
+
 
 const handleHourChange = async () => {
   await fetchAllStationsBikeNum(fixedDate, selectedHour.value)
@@ -194,11 +196,18 @@ const handleSearch = () => {
         <label>日期：</label>
         <span class="fixed-date">{{ fixedDate }}</span>
         <label>选择时段：</label>
-        <select v-model="selectedHour" @change="handleHourChange">
-          <option v-for="h in 24" :key="h" :value="(h - 1).toString().padStart(2, '0')">
-            {{ (h - 1).toString().padStart(2, '0') }}:00
-          </option>
-        </select>
+      <select v-model="selectedHour" @change="handleHourChange">
+        <option
+          v-for="h in 24"
+          :key="h"
+          :value="(h - 1).toString().padStart(2, '0')"
+          :disabled="(h - 1) < currentHour"
+          :class="{ 'disabled-option': (h - 1) < currentHour }"
+        >
+          {{ (h - 1).toString().padStart(2, '0') }}:00
+        </option>
+      </select>
+
       </div>
       </div>
     </header>
@@ -452,14 +461,21 @@ const handleSearch = () => {
   margin: 2px;
   border-radius: 2px;
 }
+
 .right-time .fixed-date {
   margin-right: 40px;
 }
+
 .right-time select {
   padding: 6px 10px;
   font-size: 16px;
   height: 30px;
   border-radius: 4px;
+}
+
+.disabled-option {
+  color: #999;
+  background-color: #f2f2f2;
 }
 
 
