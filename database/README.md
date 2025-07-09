@@ -29,14 +29,7 @@ created_at：创建时间（待定）
 
 id：唯一标识
 
-<<<<<<< HEAD
 date：日期
-=======
-station_id：站点id
-
-date：日期
-
->>>>>>> be0f4e09d641942ddeddac4f13fa8b9c77da102d
 
 hour:哪一小时
 

@@ -45,8 +45,9 @@ router.post('/login', async (req, res) => {
 );
 
 router.post('/register', async (req, res) => {
+  //
   let {account,password,email} = req.body
-  
+  //
   /*参数正确性 */
   if (!account || !password || !email) {
     return res.send({ code: 400, msg: "参数不能为空" });
@@ -115,7 +116,7 @@ router.post('/register', async (req, res) => {
                 </tr>
                 <tr>
                   <td style="text-align: center; padding: 20px 0;">
-                    <a href="${verifyUrl}" style="background-color: #4CAF50; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">
+                    <a href="${verifyUrl}" style="background-color:rgb(76, 175, 79); color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">
                       验证邮箱
                     </a>
                   </td>

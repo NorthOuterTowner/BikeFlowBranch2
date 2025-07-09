@@ -45,7 +45,7 @@ backend部分 是一个基于 Node.js 的后端应用程序，旨在根据需求
 请求格式
 ```bash
 {
-  "username": "admin", //用户名
+  "account": "admin", //用户名
   "password": "admin", //密码
   "email": "23301xxx@bjtu.edu.cn" //邮箱
 }
@@ -64,7 +64,7 @@ backend部分 是一个基于 Node.js 的后端应用程序，旨在根据需求
 请求格式
 ```bash
 {
-  "username": "admin", //用户名
+  "account": "admin", //用户名
   "password": "admin" //密码
 }
 ```
@@ -83,6 +83,24 @@ backend部分 是一个基于 Node.js 的后端应用程序，旨在根据需求
     }
 }
 
+```
+（3）重置账号（POST）
+```bash
+/reset/account
+```
+输入格式
+```bash
+{
+  "oldName": "admin", //用户名
+  "newName": "admin2", //新用户名
+}
+```
+返回格式
+```bash
+{
+  "code": 200, //状态码
+  "msg": "账号重置成功"
+}
 ```
 2.站点位置  
 （1）获取所有的站点位置（GET）
@@ -105,7 +123,7 @@ backend部分 是一个基于 Node.js 的后端应用程序，旨在根据需求
   },
   // ... more stations
 ```
-3.站点单车数量
+3.站点实际单车数量
 （1）获取指定站点在指定时间的单车数量（GET）
 ```bash
 /stations/bikeNum
@@ -125,8 +143,63 @@ query参数
   "bikeNum": 12 //库存量
 }
 ```
+（2）获取指定时间所有的站点各自的单车数量（GET）
+```bash
+/stations/bikeNum/timeAll
+```
+query参数
+```bash
+{
+  "date": "2023-10-01", //日期
+  "hour": "10" //小时
+}
+```
+返回格式
+```bash
+{
+  code:200, //状态码
+  "rows": [
+      {
+          "station_id": "X2019",
+          "stock": 12
+      },
+      {
+          "station_id": "X2024",
+          "stock": 18
+      }
+  ]
+}
+```
+（3）获取指定站点的所有单车数量（GET）
+```bash
+/stations/bikeNum/stationAll
+```
+query参数
+```bash
+{
+  "station_id": "JC019" //站点编号
+}
+```
+返回格式
+```bash
+{
+  "code":200, //状态码
+  "rows": [
+      {
+          "date": "2023-10-01",
+          "hour": 10,
+          "stock": 12
+      },
+      {
+          "date": "2023-10-01",
+          "hour": 11,
+          "stock": 15
+      }
+  ]
+}
+```
 
-3.节点预测数量结果
+4.节点预测数量结果
 （1）获取指定站点在指定时间的单车数量（GET）
 ```bash
 http://localhost:3000/predict/station?station_id=JC024&predict_time=2025-01-21T07:02:00Z
@@ -140,7 +213,8 @@ predict_time	String	查询的时间点，ISO 8601格式 2025-01-21T08:45:00Z
     "station_id": "JC019",
     "lookup_date": "2025-01-21",
     "lookup_hour": 8,
-    "status": {
+    "status": 
+    {
         "inflow": 2,//入车流
         "outflow": 15,//出车流
         "stock": 5 //这个是预测的数量

@@ -56,6 +56,7 @@ function toggleSection(section) {
   width: 200px;
   background-color: #001f4d; 
   padding: 1rem;
+  z-index: 100;
   color: #cce0ff; 
 }
 
