@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted } from 'vue'
-import axios from 'axios'
+import request from '../../api/axios'
 import { useRouter } from 'vue-router'
 import Map from 'ol/Map'
 import View from 'ol/View'
@@ -53,8 +53,9 @@ function getStationStyle(station) {
 
 async function fetchStationLocations() {
   try {
-    const response = await axios.get('/stations/locations')
-    stations.value = response.data
+    const response = await request.get('/stations/locations')
+    stations.value = response.data || response.data.data
+    console.log('站点位置数据:', stations.value)
   } catch (error) {
     console.error('获取站点位置失败:', error)
   }
@@ -62,7 +63,7 @@ async function fetchStationLocations() {
 
 async function fetchStationBikeNum(stationId, date, hour) {
   try {
-    const response = await axios.get('/stations/bikeNum', {
+    const response = await request.get('/stations/bikeNum', {
       params: { station_id: stationId, date, hour }
     })
     return response.data.bikeNum || 0
@@ -138,6 +139,12 @@ onMounted(async () => {
 
   vectorLayer = new VectorLayer({ source: new VectorSource() })
   mapInstance.addLayer(vectorLayer)
+
+  // stations 加载好以后再初始化 counts
+  stations.value.forEach(station => {
+    stationBikeCounts.value.set(station.station_id, 0)
+  })
+  updateMapDisplay()  // 默认先画出来
 
   await fetchAllStationsBikeNum(fixedDate, selectedHour.value)
 })
