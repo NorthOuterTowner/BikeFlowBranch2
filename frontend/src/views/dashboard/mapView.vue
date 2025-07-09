@@ -82,7 +82,7 @@ onMounted(() => {
     target: mapContainer.value,
     layers: [
       new TileLayer({
-        source: new OSM(), // OpenStreetMap 图层
+        source: new OSM(),
       }),
     ],
     view: new View({
@@ -91,30 +91,55 @@ onMounted(() => {
       maxZoom: 20,
       minZoom: 3
     }),
+    // 添加这些配置来限制地图的交互区域
+    controls: [], // 可以根据需要添加控件
+    interactions: [] // 可以根据需要添加交互
   })
 
-  // 构建矢量图层
-  const features = stations.map(station => {
-    const feature = new Feature({
-      geometry: new Point(fromLonLat([station.longitude, station.latitude]))
+  // 如果 stations 数据存在才创建图层
+  if (stations.value && stations.value.length > 0) {
+    // 构建矢量图层
+    const features = stations.value.map(station => {
+      const feature = new Feature({
+        geometry: new Point(fromLonLat([station.longitude, station.latitude]))
+      })
+      
+      // 设置站点样式
+      feature.setStyle(getStationStyle(station))
+      
+      // 将站点数据存储到feature中，便于后续使用
+      feature.set('stationData', station)
+      
+      return feature
     })
-    
-    // 设置站点样式
-    feature.setStyle(getStationStyle(station))
-    
-    // 将站点数据存储到feature中，便于后续使用
-    feature.set('stationData', station)
-    
-    return feature
-  })
 
-  const vectorLayer = new VectorLayer({
-    source: new VectorSource({
-      features: features
+    const vectorLayer = new VectorLayer({
+      source: new VectorSource({
+        features: features
+      }),
+      // 添加这个配置来限制图层的渲染范围
+      extent: undefined, // 或者设置具体的范围
+      // 确保图层不会阻挡其他元素的交互
+      style: (feature) => {
+        return getStationStyle(feature.get('stationData'))
+      }
     })
-  })
 
-  mapInstance.addLayer(vectorLayer)
+    mapInstance.addLayer(vectorLayer)
+  }
+
+  // 重要：限制地图的交互区域，确保不会影响到侧边栏
+  const mapElement = mapContainer.value
+  if (mapElement) {
+    // 设置地图容器的样式，确保不会超出边界
+    mapElement.style.position = 'relative'
+    mapElement.style.overflow = 'hidden'
+    
+    // 监听地图容器的点击事件，阻止事件冒泡到外层
+    mapElement.addEventListener('click', (e) => {
+      e.stopPropagation()
+    })
+  }
 })
 
 const logout = async () => {
