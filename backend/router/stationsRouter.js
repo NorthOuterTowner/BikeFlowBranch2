@@ -72,4 +72,29 @@ router.get("/bikeNum",authMiddleware, async(req,res)=>{
   }
 });
 
+router.get("/bikeNum/timeAll",authMiddleware,async(req,res)=>{
+  const {date,hour} = req.query
+  const querySql = " select `station_id`,`stock` from `station_real_data` where `date` = ? and `hour` = ? "
+  let {err,rows} = await db.async.all(querySql,[date,hour])
+  if(err == null && rows.length > 0){
+    res.send({
+      code:200,
+      rows
+    })
+  }
+})
+
+router.get("/bikeNum/stationAll",authMiddleware,async(req,res)=>{
+  const {station_id} = req.query
+  const querySql = " select `date`,`hour`,`stock` from `station_real_data` where `station_id` = ? "
+  let {err,rows} = await db.async.all(querySql,[station_id])
+  if(err == null && rows.length > 0){
+    res.send({
+      code:200,
+      rows
+    })
+  }
+})
+
+
 module.exports = router;
