@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted } from 'vue'
 import axios from 'axios'
 import { useRouter } from 'vue-router'
 import Map from 'ol/Map'
@@ -22,41 +22,28 @@ let mapInstance = null
 let vectorLayer = null
 const router = useRouter()
 const stations = ref([])
-const stationBikeCounts = ref(new Map()) // 存储站点单车数量
+const stationBikeCounts = ref(new Map())
 const loading = ref(false)
 
-// 根据车辆数量获取颜色（深色表示车辆多，浅色表示车辆少）
 function getColorByBikeCount(count) {
-  if (count >= 50) {
-    return '#1a5490' // 深蓝色 - 车辆多
-  } else if (count >= 20) {
-    return '#4a90e2' // 中等蓝色 - 车辆中等
-  } else {
-    return '#87ceeb' // 浅蓝色 - 车辆少
-  }
+  if (count >= 50) return '#1a5490'
+  else if (count >= 20) return '#4a90e2'
+  else return '#87ceeb'
 }
 
-// 获取站点样式
 function getStationStyle(station) {
   const bikeCount = stationBikeCounts.value.get(station.station_id) || 0
   const color = getColorByBikeCount(bikeCount)
-  
+
   return new Style({
     image: new Circle({
       radius: 8,
-      fill: new Fill({
-        color: color
-      }),
-      stroke: new Stroke({
-        color: '#ffffff',
-        width: 2
-      })
+      fill: new Fill({ color }),
+      stroke: new Stroke({ color: '#ffffff', width: 2 })
     }),
     text: new Text({
       text: bikeCount.toString(),
-      fill: new Fill({
-        color: '#ffffff'
-      }),
+      fill: new Fill({ color: '#ffffff' }),
       font: '12px Arial',
       textAlign: 'center',
       textBaseline: 'middle'
@@ -64,7 +51,6 @@ function getStationStyle(station) {
   })
 }
 
-// 获取站点位置数据
 async function fetchStationLocations() {
   try {
     const response = await axios.get('/stations/locations')
@@ -74,15 +60,10 @@ async function fetchStationLocations() {
   }
 }
 
-// 获取单个站点的单车数量
 async function fetchStationBikeNum(stationId, date, hour) {
   try {
     const response = await axios.get('/stations/bikeNum', {
-      params: {
-        station_id: stationId,
-        date: date,
-        hour: hour
-      }
+      params: { station_id: stationId, date, hour }
     })
     return response.data.bikeNum || 0
   } catch (error) {
@@ -91,24 +72,19 @@ async function fetchStationBikeNum(stationId, date, hour) {
   }
 }
 
-// 获取所有站点的单车数量
 async function fetchAllStationsBikeNum(date, hour) {
   if (!stations.value.length) return
 
   loading.value = true
   const bikeCounts = new Map()
-  
+
   try {
-    // 批量获取所有站点的单车数量
-    const promises = stations.value.map(async (station) => {
+    const promises = stations.value.map(async station => {
       const bikeNum = await fetchStationBikeNum(station.station_id, date, hour)
       bikeCounts.set(station.station_id, bikeNum)
     })
-    
     await Promise.all(promises)
     stationBikeCounts.value = bikeCounts
-    
-    // 更新地图显示
     updateMapDisplay()
   } catch (error) {
     console.error('获取站点单车数量失败:', error)
@@ -117,91 +93,51 @@ async function fetchAllStationsBikeNum(date, hour) {
   }
 }
 
-// 更新地图显示
 function updateMapDisplay() {
   if (!mapInstance || !vectorLayer) return
-  
-  // 清除现有的features
   vectorLayer.getSource().clear()
-  
-  // 重新创建features
+
   const features = stations.value.map(station => {
     const feature = new Feature({
       geometry: new Point(fromLonLat([station.longitude, station.latitude]))
     })
-    
-    // 设置站点样式
     feature.setStyle(getStationStyle(station))
-    
-    // 将站点数据存储到feature中，便于后续使用
     feature.set('stationData', station)
-    
     return feature
   })
-  
-  // 添加新的features
+
   vectorLayer.getSource().addFeatures(features)
 }
 
-// 解析datetime-local值获取日期和小时
-function parseDateTimeLocal(dateTimeString) {
-  const date = new Date(dateTimeString)
-  const dateStr = date.toISOString().split('T')[0] // YYYY-MM-DD
-  const hour = date.getHours().toString()
-  return { dateStr, hour }
+// 固定日期和当前小时
+const fixedDate = '2025-01-25'
+const selectedHour = ref(new Date().getHours().toString().padStart(2, '0'))
+
+const handleHourChange = async () => {
+  await fetchAllStationsBikeNum(fixedDate, selectedHour.value)
 }
 
-function getNowDatetimeLocal() {
-  const now = new Date()
-  const year = now.getFullYear()
-  const month = String(now.getMonth() + 1).padStart(2, '0')
-  const day = String(now.getDate()).padStart(2, '0')
-  const hours = String(now.getHours()).padStart(2, '0')
-  const minutes = String(now.getMinutes()).padStart(2, '0')
-
-  return `${year}-${month}-${day}T${hours}:${minutes}`
-}
-
-const dateTime = ref(getNowDatetimeLocal())
 const welcoming = ref('管理员，欢迎您！')
 const searchQuery = ref('')
 
-// 监听时间变化，重新获取数据
-watch(dateTime, async (newDateTime) => {
-  const { dateStr, hour } = parseDateTimeLocal(newDateTime)
-  await fetchAllStationsBikeNum(dateStr, hour)
-}, { immediate: false })
-
 onMounted(async () => {
-  // 先获取站点位置数据
   await fetchStationLocations()
-  
-  // 初始化地图
+
   mapInstance = new Map({
     target: mapContainer.value,
-    layers: [
-      new TileLayer({
-        source: new OSM(),
-      }),
-    ],
+    layers: [new TileLayer({ source: new OSM() })],
     view: new View({
-      center: fromLonLat([-74.0576, 40.7312]), // 调整到合适的中心点
+      center: fromLonLat([-74.0576, 40.7312]),
       zoom: 11,
       maxZoom: 20,
       minZoom: 3
-    }),
+    })
   })
 
-  // 创建矢量图层
-  vectorLayer = new VectorLayer({
-    source: new VectorSource()
-  })
-
+  vectorLayer = new VectorLayer({ source: new VectorSource() })
   mapInstance.addLayer(vectorLayer)
-  
-  // 获取初始时间的数据
-  const { dateStr, hour } = parseDateTimeLocal(dateTime.value)
-  await fetchAllStationsBikeNum(dateStr, hour)
+
+  await fetchAllStationsBikeNum(fixedDate, selectedHour.value)
 })
 
 const logout = async () => {
@@ -215,16 +151,11 @@ const logout = async () => {
 
 const handleSearch = () => {
   if (searchQuery.value.trim()) {
-    console.log('搜索:', searchQuery.value)
-    // 在这里添加搜索逻辑
-    // 例如：在地图上高亮显示匹配的站点
-    const matchedStations = stations.value.filter(station => 
+    const matchedStations = stations.value.filter(station =>
       station.station_name.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
       station.station_id.toLowerCase().includes(searchQuery.value.toLowerCase())
     )
-    
     if (matchedStations.length > 0) {
-      // 缩放到第一个匹配的站点
       const station = matchedStations[0]
       mapInstance.getView().animate({
         center: fromLonLat([station.longitude, station.latitude]),
@@ -234,13 +165,6 @@ const handleSearch = () => {
     }
   }
 }
-
-// 手动刷新数据
-const refreshData = async () => {
-  const { dateStr, hour } = parseDateTimeLocal(dateTime.value)
-  await fetchAllStationsBikeNum(dateStr, hour)
-}
-
 </script>
 
 <template>
@@ -265,17 +189,17 @@ const refreshData = async () => {
           <span class="welcoming">{{ welcoming }}</span>
           <button class="logout-button" @click="logout">退出</button>
         </div>
-        <div class="datetime-picker">
-          <input 
-            type="datetime-local" 
-            v-model="dateTime" 
-            class="datetime-input"
-            placeholder="请选择日期时间"
-          />
-          <button class="refresh-button" @click="refreshData" :disabled="loading">
-            {{ loading ? '加载中...' : '刷新' }}
-          </button>
-        </div>
+
+      <div class="right-time">
+        <label>日期：</label>
+        <span class="fixed-date">{{ fixedDate }}</span>
+        <label>选择时段：</label>
+        <select v-model="selectedHour" @change="handleHourChange">
+          <option v-for="h in 24" :key="h" :value="(h - 1).toString().padStart(2, '0')">
+            {{ (h - 1).toString().padStart(2, '0') }}:00
+          </option>
+        </select>
+      </div>
       </div>
     </header>
 
@@ -304,6 +228,7 @@ const refreshData = async () => {
     <div ref="mapContainer" class="map-container"></div>
   </div>
 </template>
+
 
 <style scoped>
 .app-container {
@@ -385,14 +310,10 @@ const refreshData = async () => {
   gap: 8px;
   align-items: center;
 }
-
-.datetime-input {
-  width: 200px;
-  padding: 6px 10px;
-  border-radius: 4px;
-  border: 1px solid #ccc;
-  cursor: pointer;
-  box-sizing: border-box;
+.date-input,
+.hour-select {
+  padding: 4px 8px;
+  font-size: 14px;
 }
 
 .logout-button, .search-button, .refresh-button {
@@ -531,4 +452,15 @@ const refreshData = async () => {
   margin: 2px;
   border-radius: 2px;
 }
+.right-time .fixed-date {
+  margin-right: 40px;
+}
+.right-time select {
+  padding: 6px 10px;
+  font-size: 16px;
+  height: 30px;
+  border-radius: 4px;
+}
+
+
 </style>
