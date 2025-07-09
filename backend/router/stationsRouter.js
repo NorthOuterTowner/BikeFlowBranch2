@@ -40,7 +40,7 @@ router.get('/locations', authMiddleware, async (req, res) => {
 
 router.get("/bikeNum",authMiddleware, async(req,res)=>{
   const {station_id,date,hour} = req.query;
-  const querySql = "select `stock` from `station_hourly_status` where `station_id` = ? and `date` = ? and `hour` = ? "
+  const querySql = "select `stock` from `station_real_data` where `station_id` = ? and `date` = ? and `hour` = ? "
   let {err,rows} = await db.async.all(querySql,[station_id,date,hour])
   if(err==null && rows.length > 0){
     res.send({
@@ -50,10 +50,10 @@ router.get("/bikeNum",authMiddleware, async(req,res)=>{
   }else{
     let errMsg = "查询失败"
     try{
-      const trySql1 = "select * from `station_hourly_status` where `station_id` = ?"
+      const trySql1 = "select * from `station_real_data` where `station_id` = ?"
       let {err:err1,rows:info1} = await db.async.all(trySql1,[station_id])
       if(info1.length > 0){
-        const trySql2 = "select * from `station_hourly_status` where `date` = ?"
+        const trySql2 = "select * from `station_real_data` where `date` = ?"
         let {err:err2,rows:info2} = await db.async.all(trySql2,[date])
         if(info2.length == 0){
           errMsg = "无此日期数据"

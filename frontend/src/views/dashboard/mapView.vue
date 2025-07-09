@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted } from 'vue'
-import axios from 'axios'
+import request from '../../api/axios'
 import { useRouter } from 'vue-router'
 import Map from 'ol/Map'
 import View from 'ol/View'
@@ -53,8 +53,9 @@ function getStationStyle(station) {
 
 async function fetchStationLocations() {
   try {
-    const response = await axios.get('/stations/locations')
-    stations.value = response.data
+    const response = await request.get('/stations/locations')
+    stations.value = response.data || response.data.data
+    console.log('站点位置数据:', stations.value)
   } catch (error) {
     console.error('获取站点位置失败:', error)
   }
@@ -62,7 +63,7 @@ async function fetchStationLocations() {
 
 async function fetchStationBikeNum(stationId, date, hour) {
   try {
-    const response = await axios.get('/stations/bikeNum', {
+    const response = await request.get('/stations/bikeNum', {
       params: { station_id: stationId, date, hour }
     })
     return response.data.bikeNum || 0
@@ -109,16 +110,47 @@ function updateMapDisplay() {
   vectorLayer.getSource().addFeatures(features)
 }
 
-// 固定日期和当前小时
 const fixedDate = '2025-01-25'
-const selectedHour = ref(new Date().getHours().toString().padStart(2, '0'))
-
+const currentHour = new Date().getHours()
+const selectedHour = ref(currentHour.toString().padStart(2, '0'))
 const handleHourChange = async () => {
   await fetchAllStationsBikeNum(fixedDate, selectedHour.value)
 }
 
 const welcoming = ref('管理员，欢迎您！')
 const searchQuery = ref('')
+
+const handleSearch = async () => {
+  if (!searchQuery.value.trim()) return
+
+  // 调用 Nominatim API 进行地名搜索
+  const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery.value)}`
+  try {
+    const res = await fetch(url)
+    const results = await res.json()
+    if (results && results.length > 0) {
+      const { lat, lon } = results[0]
+      mapInstance.getView().animate({
+        center: fromLonLat([parseFloat(lon), parseFloat(lat)]),
+        zoom: 15,
+        duration: 1000
+      })
+    } else {
+      alert('未找到相关地点')
+    }
+  } catch (e) {
+    console.error('搜索地点失败:', e)
+  }
+}
+
+const logout = async () => {
+  try {
+    await axios.post('/api/user/logout')
+  } catch (error) {
+    console.warn('登出失败，可忽略', error)
+  }
+  router.push('/login')
+}
 
 onMounted(async () => {
   await fetchStationLocations()
@@ -137,35 +169,14 @@ onMounted(async () => {
   vectorLayer = new VectorLayer({ source: new VectorSource() })
   mapInstance.addLayer(vectorLayer)
 
+  stations.value.forEach(station => {
+    stationBikeCounts.value.set(station.station_id, 0)
+  })
+  updateMapDisplay()
   await fetchAllStationsBikeNum(fixedDate, selectedHour.value)
 })
-
-const logout = async () => {
-  try {
-    await axios.post('/api/user/logout')
-  } catch (error) {
-    console.warn('登出失败，可忽略', error)
-  }
-  router.push('/login')
-}
-
-const handleSearch = () => {
-  if (searchQuery.value.trim()) {
-    const matchedStations = stations.value.filter(station =>
-      station.station_name.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-      station.station_id.toLowerCase().includes(searchQuery.value.toLowerCase())
-    )
-    if (matchedStations.length > 0) {
-      const station = matchedStations[0]
-      mapInstance.getView().animate({
-        center: fromLonLat([station.longitude, station.latitude]),
-        zoom: 15,
-        duration: 1000
-      })
-    }
-  }
-}
 </script>
+
 
 <template>
   <div class="app-container">
@@ -194,11 +205,18 @@ const handleSearch = () => {
         <label>日期：</label>
         <span class="fixed-date">{{ fixedDate }}</span>
         <label>选择时段：</label>
-        <select v-model="selectedHour" @change="handleHourChange">
-          <option v-for="h in 24" :key="h" :value="(h - 1).toString().padStart(2, '0')">
-            {{ (h - 1).toString().padStart(2, '0') }}:00
-          </option>
-        </select>
+      <select v-model="selectedHour" @change="handleHourChange">
+        <option
+          v-for="h in 24"
+          :key="h"
+          :value="(h - 1).toString().padStart(2, '0')"
+          :disabled="(h - 1) < currentHour"
+          :class="{ 'disabled-option': (h - 1) < currentHour }"
+        >
+          {{ (h - 1).toString().padStart(2, '0') }}:00
+        </option>
+      </select>
+
       </div>
       </div>
     </header>
@@ -452,14 +470,21 @@ const handleSearch = () => {
   margin: 2px;
   border-radius: 2px;
 }
+
 .right-time .fixed-date {
   margin-right: 40px;
 }
+
 .right-time select {
   padding: 6px 10px;
   font-size: 16px;
   height: 30px;
   border-radius: 4px;
+}
+
+.disabled-option {
+  color: #999;
+  background-color: #f2f2f2;
 }
 
 

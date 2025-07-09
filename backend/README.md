@@ -79,7 +79,7 @@ backend部分 是一个基于 Node.js 的后端应用程序，旨在根据需求
       "account": "admin",
       "password": "",
       "token": "b8aeb113-f7b0-47ab-a373-b8719888bcf0",
-      "email": null
+      "email": "23301xxx@bjtu.edu.cn"
     }
 }
 
@@ -253,5 +253,27 @@ predict_time	String	查询的时间点，ISO 8601格式。	2025-01-22T17:10:00Z
             "stock": 12
         }
     ]
+}
+```
+5. 执行调度过程
+（1）执行调度过程（POST）
+```bash
+/dispatch/change
+```
+请求格式
+```bash
+{
+    "startStation": "X2019", //起始站点编号
+    "endStation": "X2024", //目标站点编号
+    "number": 1, //调度数量
+    "dispatchDate": "2025-01-16",//调度日期
+    "dispatchHour": 17 //调度小时
+}
+```
+返回格式
+```bash
+{
+  "code": 200, //状态码
+  "msg": "调度成功"
 }
 ```
