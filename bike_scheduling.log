@@ -1,0 +1,18 @@
+2025-07-10 14:35:56,962 - INFO - 已移除 adj_matrix 自环
+2025-07-10 14:35:56,962 - INFO - station_capacities 类型是：<class 'dict'>
+2025-07-10 14:35:58,614 - INFO - Reward stats: mean=0.3711, std=0.2918, min=-0.6000, max=0.7000
+2025-07-10 14:35:58,632 - INFO - Filtered offline_data: 7360 valid rows out of 7360
+2025-07-10 14:35:58,632 - INFO - Dynamic batch_size: 64
+2025-07-10 14:35:59,634 - INFO - Epoch 1/100 - Loss: 1.0217, Invalid rows skipped: 0
+2025-07-10 14:36:00,680 - INFO - Epoch 2/100 - Loss: 1.0238, Invalid rows skipped: 0
+2025-07-10 14:36:01,790 - INFO - Epoch 3/100 - Loss: 1.0262, Invalid rows skipped: 0
+2025-07-10 14:36:02,850 - INFO - Epoch 4/100 - Loss: 1.0262, Invalid rows skipped: 0
+2025-07-10 14:36:03,845 - INFO - Epoch 5/100 - Loss: 1.0288, Invalid rows skipped: 0
+2025-07-10 14:36:04,812 - INFO - Epoch 6/100 - Loss: 1.0342, Invalid rows skipped: 0
+2025-07-10 14:36:04,812 - INFO - Early stopping at epoch 6
+2025-07-10 14:36:07,333 - INFO - 插入 station_schedule，保留现有数据
+2025-07-10 14:36:08,700 - INFO - 
+调度选项 - 2025-06-12 6:00:
+2025-07-10 14:36:08,700 - INFO - 有效调度记录数: 0
+2025-07-10 14:36:08,965 - INFO - Using categorical units to plot a list of strings that are all parsable as floats or dates. If these strings should be plotted as numbers, cast to the appropriate data type before plotting.
+2025-07-10 14:36:08,965 - INFO - Using categorical units to plot a list of strings that are all parsable as floats or dates. If these strings should be plotted as numbers, cast to the appropriate data type before plotting.
