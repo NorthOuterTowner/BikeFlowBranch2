@@ -5,6 +5,7 @@ const PORT = 3000;
 const {db,genid} = require("./db/dbUtils")
 const redis = require("redis")
 const redisClient = require("./db/redis")
+const sequelize = require('./orm/sequelize');
 
 /* 🌟 全局打印收到的所有请求 */
 app.use((req, res, next) => {
@@ -33,6 +34,12 @@ app.use(function(req,res,next){
 
 app.use(express.json());
 app.use(limiter);
+
+sequelize.authenticate().then(() => {
+  console.log('Sequelize 已成功连接数据库');
+}).catch(err => {
+  console.error('连接失败:', err);
+});
 
 app.use("/admin",require("./router/adminRouter"));
 app.use("/reset",require("./router/resetRouter"));
