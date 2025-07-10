@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, onMounted, nextTick, computed } from 'vue'
 import request from '../../api/axios'
 import { useRouter } from 'vue-router'
 import Map from 'ol/Map'
@@ -30,7 +30,9 @@ const stationStatusMap = ref({})  // key: station_id, value: { stock, inflow, ou
 const loading = ref(false)
 const welcoming = ref('管理员，欢迎您！')
 const searchQuery = ref('')
-const fixedDate = '2025-01-25'
+const fixedDate = computed(() => {
+  return localStorage.getItem('selectedDate') || new Date().toISOString().split('T')[0]
+})
 const currentHour = new Date().getHours()
 const selectedHour = ref(currentHour.toString().padStart(2, '0'))
 
@@ -64,9 +66,6 @@ function getStationStyle(station, bikeNum = 0) {
   })
 }
 
-/**
- * 获取所有站点位置
- */
 async function fetchStationLocations() {
   console.log('进到获取站点位置函数')
   try {
