@@ -1,5 +1,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
+import { Style, Fill, Stroke, Circle } from 'ol/style'
+import VectorLayer from 'ol/layer/Vector'
 import request from '../../api/axios'
 import { useRouter } from 'vue-router'
 import Map from 'ol/Map'
@@ -23,7 +25,6 @@ const stations = ref([])
 const predictionData = ref([])
 const loading = ref(false)
 const welcoming = ref('管理员，欢迎您！')
-const searchQuery = ref('')
 
 // 表格相关状态
 const showTable = ref(true)
@@ -98,7 +99,7 @@ async function fetchPredictionData(predictTime) {
     
     predictionData.value = response.data.stations_status || []
     console.log('获取预测数据:', predictionData.value)
-    updateHeatmap()
+    updateHeatmapWithBlur()
   } catch (error) {
     console.error('获取预测数据失败:', error)
     predictionData.value = []
@@ -106,6 +107,7 @@ async function fetchPredictionData(predictTime) {
     loading.value = false
   }
 }
+
 function calculateDifferenceStats() {
   const predictionMap = new Map()
   predictionData.value.forEach(item => {
@@ -143,8 +145,8 @@ function calculateDifferenceStats() {
   }
 }
 
-function updateHeatmap() {
-  if (!mapInstance || !heatmapLayer || !stations.value.length || !predictionData.value.length) {
+function updateHeatmapWithBlur() {
+  if (!mapInstance || !stations.value.length || !predictionData.value.length) {
     console.warn('地图未初始化或数据不完整')
     return
   }
@@ -158,62 +160,142 @@ function updateHeatmap() {
     predictionMap.set(item.station_id, item)
   })
 
-  // 清除现有要素
-  heatmapLayer.getSource().clear()
+  // 移除旧图层
+  if (heatmapLayer) {
+    mapInstance.removeLayer(heatmapLayer)
+  }
+  if (window.outflowLayer) {
+    mapInstance.removeLayer(window.outflowLayer)
+  }
+  if (window.neutralLayer) {
+    mapInstance.removeLayer(window.neutralLayer)
+  }
 
-  // 创建热力图要素
-  const features = stations.value.map(station => {
+  // 分别创建流入、流出和中性的热力图层
+  const inflowSource = new VectorSource()
+  const outflowSource = new VectorSource()
+  const neutralSource = new VectorSource()
+
+  // 创建要素
+  stations.value.forEach(station => {
     const prediction = predictionMap.get(station.station_id)
-    if (!prediction) return null
+    if (!prediction) return
 
-    const feature = new Feature({
-      geometry: new Point(fromLonLat([
-        parseFloat(station.longitude), 
-        parseFloat(station.latitude)
-      ]))
-    })
-
-    // 计算差值 (inflow - outflow)
     const difference = prediction.inflow - prediction.outflow
     
-    // 使用差值的绝对值作为权重，并归一化
-    const maxDiff = Math.max(differenceStats.value.maxInflow, differenceStats.value.maxOutflow)
-    const weight = maxDiff > 0 ? Math.abs(difference) / maxDiff : 0
+    if (difference > 0) {
+      // 流入点
+      const feature = new Feature({
+        geometry: new Point(fromLonLat([
+          parseFloat(station.longitude), 
+          parseFloat(station.latitude)
+        ]))
+      })
+      
+      const weight = Math.min(difference / differenceStats.value.maxInflow, 1)
+      feature.set('weight', weight)
+      feature.set('stationData', { ...station, ...prediction })
+      inflowSource.addFeature(feature)
+    } else if (difference < 0) {
+      // 流出点
+      const feature = new Feature({
+        geometry: new Point(fromLonLat([
+          parseFloat(station.longitude), 
+          parseFloat(station.latitude)
+        ]))
+      })
+      
+      const weight = Math.min(Math.abs(difference) / differenceStats.value.maxOutflow, 1)
+      feature.set('weight', weight)
+      feature.set('stationData', { ...station, ...prediction })
+      outflowSource.addFeature(feature)
+    } else {
+      // 差值为0的点（中性）
+      const feature = new Feature({
+        geometry: new Point(fromLonLat([
+          parseFloat(station.longitude), 
+          parseFloat(station.latitude)
+        ]))
+      })
+      
+      // 中性点使用固定权重
+      feature.set('weight', 0.9)
+      feature.set('stationData', { ...station, ...prediction })
+      neutralSource.addFeature(feature)
+    }
+  })
 
-    feature.set('weight', Math.min(1, weight))
-    feature.set('stationData', { ...station, ...prediction })
-    feature.set('difference', difference)
-    
-    return feature
-  }).filter(Boolean)
+  // 创建流入热力图层 - 红色 (zIndex: 2)
+  const inflowLayer = new HeatmapLayer({
+    source: inflowSource,
+    blur: 20,
+    radius: 25,
+    weight: function(feature) {
+      return feature.get('weight') || 0
+    },
+    gradient: [
+      'rgba(255, 0, 0, 0)',
+      'rgba(255, 50, 0, 0.3)',
+      'rgba(255, 100, 0, 0.5)',
+      'rgba(255, 150, 0, 0.7)',
+      'rgba(255, 200, 0, 0.8)',
+      'rgba(255, 0, 0, 0.9)'
+    ]
+  })
+  inflowLayer.setZIndex(2)
 
-  // 添加要素到热力图层
-  heatmapLayer.getSource().addFeatures(features)
+  // 创建流出热力图层 - 蓝色 (zIndex: 2)
+  const outflowLayer = new HeatmapLayer({
+    source: outflowSource,
+    blur: 20,
+    radius: 25,
+    weight: function(feature) {
+      return feature.get('weight') || 0
+    },
+    gradient: [
+      'rgba(0, 100, 255, 0)',
+      'rgba(0, 120, 255, 0.3)',
+      'rgba(0, 150, 255, 0.5)',
+      'rgba(0, 180, 255, 0.7)',
+      'rgba(0, 200, 255, 0.8)',
+      'rgba(0, 100, 255, 0.9)'
+    ]
+  })
+  outflowLayer.setZIndex(2)
+
+  // 创建中性热力图层 - 黄色 (zIndex: 1, 最低优先级)
+  const neutralLayer = new HeatmapLayer({
+    source: neutralSource,
+    blur: 15,
+    radius: 20,
+    weight: function(feature) {
+      return feature.get('weight') || 0
+    },
+    gradient: [
+      'rgba(255, 255, 0, 0)',
+      'rgba(255, 255, 50, 0.4)',
+      'rgba(255, 255, 100, 0.6)',
+      'rgba(255, 255, 150, 0.8)',
+      'rgba(255, 255, 200, 0.9)',
+      'rgba(255, 255, 0, 1)'
+    ]
+  })
+  neutralLayer.setZIndex(1)
+
+  mapInstance.addLayer(neutralLayer)
+  mapInstance.addLayer(inflowLayer)
+  mapInstance.addLayer(outflowLayer)
+
+  
+  // 保存引用（用于后续清理）
+  heatmapLayer = inflowLayer
+  window.outflowLayer = outflowLayer
+  window.neutralLayer = neutralLayer
 }
 
 const handleTimeChange = async () => {
   const predictTime = `${selectedDate.value}T${selectedHour.value}:00:00Z`
   await fetchPredictionData(predictTime)
-}
-
-const handleSearch = () => {
-  if (!searchQuery.value.trim()) return
-  
-  const matchedStations = stations.value.filter(station =>
-    station.station_name.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-    station.station_id.toLowerCase().includes(searchQuery.value.toLowerCase())
-  )
-  
-  if (matchedStations.length > 0) {
-    const station = matchedStations[0]
-    mapInstance.getView().animate({
-      center: fromLonLat([station.longitude, station.latitude]),
-      zoom: 15,
-      duration: 1000
-    })
-  } else {
-    alert('未找到相关站点')
-  }
 }
 
 const toggleTable = () => {
@@ -252,27 +334,6 @@ onMounted(async () => {
   className: 'ol-zoom-custom'
 })
 mapInstance.addControl(zoomControl)
-
-  // 创建差值热力图层，使用自定义颜色渐变
-  heatmapLayer = new HeatmapLayer({
-    source: new VectorSource(),
-    blur: 15,
-    radius: 20,
-    weight: function(feature) {
-      return feature.get('weight') || 0
-    },
-    gradient: [
-      'rgba(0, 0, 255, 0)',      // 透明蓝色 (开始)
-      'rgba(0, 100, 255, 0.4)',  // 浅蓝色 (汇入低)
-      'rgba(0, 255, 0, 0.6)',    // 绿色 (汇入中)
-      'rgba(255, 255, 0, 0.8)',  // 黄色 (汇入高)
-      'rgba(255, 165, 0, 0.9)',  // 橙色 (汇出低)
-      'rgba(255, 0, 0, 1)'       // 红色 (汇出高)
-    ]
-  })
-  
-  mapInstance.addLayer(heatmapLayer)
-
   // 加载初始数据
   const predictTime = `${selectedDate.value}T${selectedHour.value}:00:00Z`
   await fetchPredictionData(predictTime)
@@ -286,14 +347,6 @@ mapInstance.addControl(zoomControl)
       <div class="header-left">
         <h1 class="title">共享单车流量差值热力图</h1>
         <div class="search-container">
-          <input 
-            type="text" 
-            placeholder="搜索站点..." 
-            class="search-input"
-            v-model="searchQuery"
-            @keyup.enter="handleSearch"
-          />
-          <button class="search-button" @click="handleSearch">搜索</button>
           <button class="toggle-table-button" @click="toggleTable">
             {{ showTable ? '隐藏表格' : '显示表格' }}
           </button>
@@ -457,23 +510,7 @@ mapInstance.addControl(zoomControl)
   font-size: 20px;
   font-weight: bold;
   margin: 0;
-  color: #091275;
-}
-
-.search-container {
-  width: 50%;
-  display: flex;
-  min-width: 0;
-  gap: 8px;
-}
-
-.search-input {
-  height: 30px;
-  padding: 4px 8px;
-  border-radius: 4px;
-  border: 1px solid #ccc;
-  flex: 1;
-  min-width: 0;
+  color: #010210;
 }
 
 .user-info {
@@ -497,7 +534,7 @@ mapInstance.addControl(zoomControl)
   color: #495057;
 }
 
-.logout-button, .search-button, .toggle-table-button {
+.logout-button, .toggle-table-button {
   padding: 6px 12px;
   background-color: #091275;
   color: white;
@@ -508,7 +545,7 @@ mapInstance.addControl(zoomControl)
   transition: background-color 0.2s;
 }
 
-.logout-button:hover, .search-button:hover, .toggle-table-button:hover {
+.logout-button:hover, .toggle-table-button:hover {
   background-color: #0a1580;
 }
 
@@ -795,11 +832,11 @@ mapInstance.addControl(zoomControl)
 .gradient-bar {
   height: 20px;
   background: linear-gradient(to right, 
-    rgba(0, 100, 255, 1) 0%,
-    rgba(0, 255, 0, 0.8) 25%,
-    rgba(255, 255, 0, 0.6) 50%,
-    rgba(255, 165, 0, 0.8) 75%,
-    rgba(255, 0, 0, 1) 100%
+    rgba(0, 100, 255, 1) 0%,      /* 蓝色 - 最大流出 */
+    rgba(0, 150, 255, 0.8) 25%,   /* 深蓝色 */
+    rgba(255, 255, 0, 0.8) 50%,   /* 黄色 - 平衡 */
+    rgba(255, 100, 0, 0.9) 75%,   /* 橙色 */
+    rgba(255, 0, 0, 1) 100%       /* 红色 - 最大流入 */
   );
   border-radius: 10px;
   border: 1px solid #ddd;
@@ -809,6 +846,7 @@ mapInstance.addControl(zoomControl)
   display: flex;
   justify-content: space-between;
   font-size: 12px;
+  margin-top: 5px;
 }
 
 .outflow-label {
@@ -817,12 +855,12 @@ mapInstance.addControl(zoomControl)
 }
 
 .balance-label {
-  color: #666;
+  color: #ff9900;
   font-weight: bold;
 }
 
 .inflow-label {
-  color: #cc0000;
+  color: #ff0000;
   font-weight: bold;
 }
 
