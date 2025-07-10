@@ -4,6 +4,9 @@ const { db } = require('../db/dbUtils');
 
 const authMiddleware = require("../utils/auth")
 
+/**
+ * 查询所有站点信息
+ */
 router.get('/locations', authMiddleware, async (req, res) => {
   try {
       const { err, rows } = await db.async.all(
@@ -19,6 +22,9 @@ router.get('/locations', authMiddleware, async (req, res) => {
   }
 });
 
+/**
+ * 获取指定站点在指定时刻的单车余量
+ */
 router.get("/bikeNum",authMiddleware, async(req,res)=>{
   const {station_id,date,hour} = req.query;
   const querySql = "select `stock` from `station_real_data` where `station_id` = ? and `date` = ? and `hour` = ? "
@@ -53,6 +59,9 @@ router.get("/bikeNum",authMiddleware, async(req,res)=>{
   }
 });
 
+/**
+ * 获取指定时间所有站点的实际单车余量
+ */
 router.get("/bikeNum/timeAll",authMiddleware,async(req,res)=>{
   const {date,hour} = req.query
   const querySql = " select `station_id`,`stock` from `station_real_data` where `date` = ? and `hour` = ? "
@@ -65,6 +74,9 @@ router.get("/bikeNum/timeAll",authMiddleware,async(req,res)=>{
   }
 })
 
+/**
+ * 获取指定站点在所有时间的实际单车余量
+ */
 router.get("/bikeNum/stationAll",authMiddleware,async(req,res)=>{
   const {station_id} = req.query
   const querySql = " select `date`,`hour`,`stock` from `station_real_data` where `station_id` = ? "

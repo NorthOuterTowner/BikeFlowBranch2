@@ -10,6 +10,10 @@ const redisClient = require("../db/redis")
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/**
+ * 登录功能：
+ * 输入用户名和密码即可，该接口返回token，前端应使用工具记录以验证登录状态
+ */
 router.post('/login', async (req, res) => {
   let {account,password} = req.body;
 
@@ -44,6 +48,10 @@ router.post('/login', async (req, res) => {
   }
 );
 
+/**
+ * 注册功能：
+ * 需在进行注册后点击邮箱链接才可完成注册
+ */
 router.post('/register', async (req, res) => {
   //
   let {account,password,email} = req.body
@@ -149,12 +157,64 @@ router.post('/register', async (req, res) => {
   });
 });
 
+/**
+ * 验证点击的链接所含的验证码是否有效
+ * （该API不在前端进行调用，而是通过邮件中链接跳转访问）
+ */
 router.get('/verify', async (req, res) => {
   const { code } = req.query;
 
   const json = await redisClient.get(`register:${code}`);
   if (!json) {
-    return res.send("链接无效或已过期！");
+    return res.send(`
+      <!DOCTYPE html>
+      <html lang="zh-CN">
+      <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>注册验证失败</title>
+          <style>
+              body {
+                  font-family: 'Arial', sans-serif;
+                  background-color: #f5f5f5;
+                  display: flex;
+                  justify-content: center;
+                  align-items: center;
+                  height: 100vh;
+                  margin: 0;
+              }
+              .container {
+                  background: white;
+                  padding: 2rem;
+                  border-radius: 8px;
+                  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                  text-align: center;
+                  max-width: 500px;
+              }
+              h1 {
+                  color: #e74c3c;
+              }
+              p {
+                  color: #555;
+                  margin-bottom: 1.5rem;
+              }
+              .icon {
+                  font-size: 3rem;
+                  color: #e74c3c;
+                  margin-bottom: 1rem;
+              }
+          </style>
+      </head>
+      <body>
+          <div class="container">
+              <div class="icon">❌</div>
+              <h1>注册验证失败</h1>
+              <p>链接无效或已过期！</p>
+              <p>请重新申请注册链接或联系管理员。</p>
+          </div>
+      </body>
+      </html>
+    `);
   }
 
   const { account, password, email } = JSON.parse(json);
@@ -167,10 +227,68 @@ router.get('/verify', async (req, res) => {
 
   await redisClient.del(`register:${code}`);
 
-  res.status(200).send({
-    code:200,
-    msg:"注册成功"
-  });
+  res.send(`
+  <!DOCTYPE html>
+  <html lang="zh-CN">
+  <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>注册成功</title>
+      <style>
+          body {
+              font-family: 'Arial', sans-serif;
+              background-color: #f5f5f5;
+              display: flex;
+              justify-content: center;
+              align-items: center;
+              height: 100vh;
+              margin: 0;
+          }
+          .container {
+              background: white;
+              padding: 2rem;
+              border-radius: 8px;
+              box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+              text-align: center;
+              max-width: 500px;
+          }
+          h1 {
+              color: #2ecc71;
+          }
+          p {
+              color: #555;
+              margin-bottom: 1.5rem;
+          }
+          .icon {
+              font-size: 3rem;
+              color: #2ecc71;
+              margin-bottom: 1rem;
+          }
+          .account-info {
+              background: #f9f9f9;
+              padding: 1rem;
+              border-radius: 4px;
+              margin: 1rem 0;
+              text-align: left;
+          }
+      </style>
+  </head>
+  <body>
+      <div class="container">
+          <div class="icon">✓</div>
+          <h1>注册成功</h1>
+          <p>您的账户已成功创建！</p>
+          
+          <div class="account-info">
+              <p><strong>账号:</strong> ${account}</p>
+              <p><strong>邮箱:</strong> ${email}</p>
+          </div>
+          
+          <p>您现在可以登录您的账户。</p>
+      </div>
+  </body>
+  </html>
+`);
 });
 
 
