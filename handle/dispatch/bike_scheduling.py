@@ -47,7 +47,7 @@ class OfflineRLScheduler:
         self.station_capacities = station_capacities
         self.stations = list(stations)  # 转换为列表以支持 index 方法
     
-    def train(self, offline_data, gamma=0.99, epochs=50):
+    def train(self, offline_data, gamma=0.99, epochs=5):
         optimizer_policy = optim.Adam(self.policy_net.parameters(), lr=0.001)
         optimizer_value = optim.Adam(self.value_net.parameters(), lr=0.001)
         for epoch in range(epochs):
@@ -113,7 +113,7 @@ def update_inventory(status_df, schedule_actions, station_capacities):
                  for sid in status_df['station_id'].unique()}
     updated_status = status_df.copy()
     for _, action in schedule_actions.iterrows():
-        action_data = json.loads(action['schedule_action'])
+        action_data = json.loads(action['schedule_action']) if isinstance(action['schedule_action'], str) else action['schedule_action']
         if action_data['bikes'] > 0:
             from_station = action_data['from_station']
             to_station = action_data['to_station']
@@ -231,6 +231,7 @@ def main():
         exit(1)
     
     # 保存调度结果
+    # 保存调度结果
     try:
         with engine.connect() as conn:
             insert_sql = """
@@ -238,16 +239,18 @@ def main():
             (station_id, date, hour, schedule_action, alert, updated_at)
             VALUES (:station_id, :date, :hour, :schedule_action, :alert, :updated_at)
             """
-            insert_values = [{
-                "station_id": r['station_id'],
-                "date": r['date'],
-                "hour": int(r['hour'].split(':')[0]),
-                "schedule_action": json.dumps(r['schedule_action']),
-                "alert": json.dumps(r['alert']),
-                "updated_at": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            } for r in schedule_results]
+            insert_values = []
+            for r in schedule_results:
+                insert_values.append({
+                    "station_id": r['station_id'],
+                    "date": r['date'],
+                    "hour": int(r['hour'].split(':')[0]),
+                    "schedule_action": json.dumps(r['schedule_action']) if isinstance(r['schedule_action'], dict) else r['schedule_action'],
+                    "alert": json.dumps(r['alert']) if isinstance(r['alert'], dict) else r['alert'],
+                    "updated_at": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                })
             conn.execute(text(insert_sql), parameters=insert_values)
-            
+
             # 更新 station_hourly_status 的库存
             update_sql = """
             UPDATE station_hourly_status
@@ -265,6 +268,7 @@ def main():
     except Exception as e:
         logger.error(f"保存调度结果失败: {e}")
         exit(1)
+
     
     # 保存 JSON
     try:
