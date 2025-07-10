@@ -8,29 +8,31 @@ const nodemailer = require("nodemailer");
 const redis = require("redis")
 const redisClient = require("../db/redis")
 
+const authMiddleware = require("../utils/auth")
+
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-router.post('/account',async (req, res) => {
+router.post('/account',authMiddleware,async (req, res) => {
     let {oldName,newName} = req.body
     const sql = 'select count(*) as cnt from `admin` where `account` = ?'
     let { err, rows } = await db.async.all(sql,[newName])
     if(err == null && rows[0].cnt == 0){
         const sql2 = 'update `admin` set `account` = ? where `account` = ?'
         await db.async.run(sql2,[newName,oldName])
-        res.send({
+        res.status(200).send({
             status:200,
             newName,
             msg:"用户名重置成功"
         })
     }else if (rows[0].cnt > 0){
         //用户名已存在
-        res.send({
+        res.status(500).send({
             status:500,
             newName,
             msg:"用户名已存在"
         })
     }else{
-        res.send({
+        res.status(500).send({
             status:500,
             newName,
             msg:"服务器错误"
@@ -38,7 +40,7 @@ router.post('/account',async (req, res) => {
     }
 });
 
-router.post('/pwd', async (req, res) => {
+router.post('/pwd', authMiddleware, async (req, res) => {
   const { email, newPassword } = req.body;
 
   if (!email || !newPassword) {
@@ -54,7 +56,7 @@ router.post('/pwd', async (req, res) => {
     const { rows: exists } = await db.async.all(checkSql, [email]);
 
     if (exists[0].cnt === 0) {
-      return res.send({ code: 404, msg: "该邮箱未注册" });
+      return res.status(404).send({ code: 404, msg: "该邮箱未注册" });
     }
 
     // 生成验证码和哈希密码
@@ -120,13 +122,13 @@ router.post('/pwd', async (req, res) => {
             </html>`
     });
 
-    res.send({ 
+    res.status(200).send({ 
       code: 200, 
       msg: "重置验证邮件已发送，请查收邮箱" 
     });
 
   } catch (e) {
-    res.send({ 
+    res.status(500).send({ 
       code: 500, 
       msg: "服务器内部错误", 
       error: e.message 
@@ -152,13 +154,13 @@ router.get('/verify', async (req, res) => {
 
     await redisClient.del(`reset-password:${code}`);
 
-    res.send({
+    res.status(200).send({
       code: 200,
       msg: "密码重置成功"
     });
 
   } catch (e) {
-    res.send({ 
+    res.status(500).send({ 
       code: 500, 
       msg: "重置失败", 
       error: e.message 

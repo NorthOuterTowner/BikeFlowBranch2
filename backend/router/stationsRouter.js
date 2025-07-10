@@ -2,26 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { db } = require('../db/dbUtils');
 
-async function authMiddleware(req, res, next) {
-    const account = req.header('account');
-    const token = req.header('token');
-    if (!account || !token) {
-        return res.status(401).json({ error: 'Unauthorized' });
-    }
-    try {
-        const { err, rows } = await db.async.all(
-            'SELECT * FROM admin WHERE account = ? AND token = ?',
-            [account, token]
-        );
-        if (rows.length === 0) {
-            return res.status(401).json({ error: 'Unauthorized' });
-        }
-        req.user = rows[0];
-        next();
-    } catch (err) {
-        res.status(500).json({ error: 'Auth check failed' });
-    }
-}
+const authMiddleware = require("../utils/auth")
 
 router.get('/locations', authMiddleware, async (req, res) => {
   try {
@@ -65,7 +46,7 @@ router.get("/bikeNum",authMiddleware, async(req,res)=>{
       errMsg = "查询失败"
     }
 
-    res.send({
+    res.status(500).send({
       code:500,
       msg:errMsg
     })
@@ -77,7 +58,7 @@ router.get("/bikeNum/timeAll",authMiddleware,async(req,res)=>{
   const querySql = " select `station_id`,`stock` from `station_real_data` where `date` = ? and `hour` = ? "
   let {err,rows} = await db.async.all(querySql,[date,hour])
   if(err == null && rows.length > 0){
-    res.send({
+    res.status(200).send({
       code:200,
       rows
     })
@@ -89,7 +70,7 @@ router.get("/bikeNum/stationAll",authMiddleware,async(req,res)=>{
   const querySql = " select `date`,`hour`,`stock` from `station_real_data` where `station_id` = ? "
   let {err,rows} = await db.async.all(querySql,[station_id])
   if(err == null && rows.length > 0){
-    res.send({
+    res.status(200).send({
       code:200,
       rows
     })
