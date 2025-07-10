@@ -1,31 +1,19 @@
-const { DataTypes } = require('sequelize');
-
-module.exports = (sequelize) => {
+module.exports = (sequelize, DataTypes) => {
   const Station = sequelize.define('Station', {
     station_id: {
       type: DataTypes.STRING(20),
       primaryKey: true,
-      allowNull: false,
-      collate: 'utf8mb4_general_ci'
+      allowNull: false
     },
-    lat: {
-      type: DataTypes.FLOAT,
-      allowNull: true
-    },
-    lng: {
-      type: DataTypes.FLOAT,
-      allowNull: true
-    },
+    lat: DataTypes.FLOAT,
+    lng: DataTypes.FLOAT,
     capacity: {
       type: DataTypes.INTEGER,
-      allowNull: false,
       defaultValue: 20
     }
   }, {
-    tableName: 'station_info', // 这里指定实际的表名
-    charset: 'utf8mb4',
-    collate: 'utf8mb4_general_ci',
-    timestamps: false
+    tableName: 'station_info',
+    freezeTableName: true
   });
 
   return Station;
