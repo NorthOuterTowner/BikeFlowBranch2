@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, nextTick } from 'vue'
 import request from '../../api/axios'
 import { useRouter } from 'vue-router'
 import Map from 'ol/Map'
@@ -16,24 +16,37 @@ import Circle from 'ol/style/Circle'
 import Fill from 'ol/style/Fill'
 import Stroke from 'ol/style/Stroke'
 import Text from 'ol/style/Text'
+import StationInfo from '../../views/dashboard/stationInfo.vue'
 
 const mapContainer = ref(null)
 let mapInstance = null
 let vectorLayer = null
 const router = useRouter()
-const stations = ref([])
-const stationBikeCounts = ref(new Map())
-const loading = ref(false)
 
+// 状态管理
+const stations = ref([])
+const stationStatusMap = ref({})  // key: station_id, value: { stock, inflow, outflow }
+//const stationBikeCounts = ref(new Map())
+const loading = ref(false)
+const welcoming = ref('管理员，欢迎您！')
+const searchQuery = ref('')
+const fixedDate = '2025-01-25'
+const currentHour = new Date().getHours()
+const selectedHour = ref(currentHour.toString().padStart(2, '0'))
+
+/**
+ * 根据单车数量返回对应颜色
+ * @param count 单车数量
+ */
 function getColorByBikeCount(count) {
   if (count >= 50) return '#1a5490'
   else if (count >= 20) return '#4a90e2'
   else return '#87ceeb'
 }
 
-function getStationStyle(station) {
-  const bikeCount = stationBikeCounts.value.get(station.station_id) || 0
-  const color = getColorByBikeCount(bikeCount)
+function getStationStyle(station, bikeNum = 0) {
+  //const bikeCount = stationBikeCounts.value.get(station.station_id) || 0
+  const color = getColorByBikeCount(bikeNum)
 
   return new Style({
     image: new Circle({
@@ -42,7 +55,7 @@ function getStationStyle(station) {
       stroke: new Stroke({ color: '#ffffff', width: 2 })
     }),
     text: new Text({
-      text: bikeCount.toString(),
+      text: bikeNum.toString(),
       fill: new Fill({ color: '#ffffff' }),
       font: '12px Arial',
       textAlign: 'center',
@@ -51,107 +64,231 @@ function getStationStyle(station) {
   })
 }
 
+/**
+ * 获取所有站点位置
+ */
 async function fetchStationLocations() {
+  console.log('进到获取站点位置函数')
   try {
+    loading.value = true
     const response = await request.get('/stations/locations')
-    stations.value = response.data || response.data.data
-    console.log('站点位置数据:', stations.value)
+    
+    // 处理可能的不同响应结构
+    const data = response.data
+    if (Array.isArray(data)) {
+      stations.value = data
+    } else if (data && Array.isArray(data.data)) {
+      stations.value = data.data
+    } else {
+      console.error('站点数据格式不正确:', data)
+      stations.value = []
+    }
+    
+    console.log('获取到站点数据:', stations.value)
+    return stations.value
   } catch (error) {
     console.error('获取站点位置失败:', error)
-  }
-}
-
-async function fetchStationBikeNum(stationId, date, hour) {
-  try {
-    const response = await request.get('/stations/bikeNum', {
-      params: { station_id: stationId, date, hour }
-    })
-    return response.data.bikeNum || 0
-  } catch (error) {
-    console.error(`获取站点 ${stationId} 单车数量失败:`, error)
-    return 0
-  }
-}
-
-async function fetchAllStationsBikeNum(date, hour) {
-  if (!stations.value.length) return
-
-  loading.value = true
-  const bikeCounts = new Map()
-
-  try {
-    const promises = stations.value.map(async station => {
-      const bikeNum = await fetchStationBikeNum(station.station_id, date, hour)
-      bikeCounts.set(station.station_id, bikeNum)
-    })
-    await Promise.all(promises)
-    stationBikeCounts.value = bikeCounts
-    updateMapDisplay()
-  } catch (error) {
-    console.error('获取站点单车数量失败:', error)
+    stations.value = []
+    return []
   } finally {
     loading.value = false
   }
 }
 
+// async function fetchStationBikeNum(stationId, date, hour) {
+//   try {
+//     const response = await request.get('/stations/bikeNum', {
+//       params: { station_id: stationId, date, hour }
+//     })
+//     return response.data.bikeNum || 0
+//   } catch (error) {
+//     console.error(`获取站点 ${stationId} 单车数量失败:`, error)
+//     return 0
+//   }
+// }
+
+// async function fetchAllStationsBikeNum(date, hour) {
+//   if (!stations.value.length) return
+
+//   loading.value = true
+//   const bikeCounts = new Map()
+
+//   try {
+//     const promises = stations.value.map(async station => {
+//       const bikeNum = await fetchStationBikeNum(station.station_id, date, hour)
+//       bikeCounts.set(station.station_id, bikeNum)
+//     })
+//     await Promise.all(promises)
+//     stationBikeCounts.value = bikeCounts
+//     updateMapDisplay()
+//   } catch (error) {
+//     console.error('获取站点单车数量失败:', error)
+//   } finally {
+//     loading.value = false
+//   }
+// }
+
+/**
+ * 获取指定时间所有站点的单车数量和流量
+ * @param predictTime 预测时间，格式为 'HH:mm:ss'(疑似)
+ */
+async function fetchAllStationsStatus(predictTime) {
+  try {
+    loading.value = true
+    const res = await request.get('/predict/stations/all', {
+      params: { predict_time: predictTime }
+    })
+    // 转成 { station_id: { stock, inflow, outflow } }
+    const newMap = {}
+    res.data.stations_status.forEach(item => {
+      newMap[item.station_id] = {
+        stock: item.stock,
+        inflow: item.inflow,
+        outflow: item.outflow
+      }
+    })
+    stationStatusMap.value = newMap
+    console.log('站点状态:', stationStatusMap.value)
+    updateMapDisplay()
+      } catch (error) {
+    console.error('获取所有站点状态失败:', error.response || error.message ||error)
+    console.log('请求地址:', '/predict/stations/all', '参数:', predictTime)
+
+  } finally {
+    loading.value = false
+  }
+  // loading.value = true
+  // try {
+  //   // 这里模拟假数据，格式参考你接口返回结构
+  //   const fakeResponse = {
+  //     data: {
+  //       stations_status: [
+  //         { station_id: 'JC019', stock: 5, inflow: 2, outflow: 1 },
+  //         { station_id: 'HB611', stock: 3, inflow: 1, outflow: 2 },
+  //         { station_id: 'JC076', stock: 7, inflow: 3, outflow: 1 },
+  //         // 更多站点数据按需补充
+  //       ]
+  //     }
+  //   }
+  //   const newMap = {}
+  //   fakeResponse.data.stations_status.forEach(item => {
+  //     newMap[item.station_id] = {
+  //       stock: item.stock,
+  //       inflow: item.inflow,
+  //       outflow: item.outflow
+  //     }
+  //   })
+  //   stationStatusMap.value = newMap
+  //   console.log('站点状态（假数据）:', stationStatusMap.value)
+  //   updateMapDisplay()
+  // } catch (error) {
+  //   console.error('假数据处理出错:', error)
+  // } finally {
+  //   loading.value = false
+  // }
+}
+
+/**
+ * 更新地图显示
+ */
 function updateMapDisplay() {
-  if (!mapInstance || !vectorLayer) return
+  if (!mapInstance || !vectorLayer || !stations.value.length) {
+    console.warn('地图未初始化或没有站点数据')
+    return
+  }
+
+  // 清除现有要素
   vectorLayer.getSource().clear()
 
+  // 创建新的要素
   const features = stations.value.map(station => {
+    // 根据新接口拿到 status
+    const status = stationStatusMap.value[station.station_id]
+    const bikeNum = status?.stock ?? 0
+    // 也可以把 bikeNum 塞到 stationData 里，方便 popup 用
     const feature = new Feature({
-      geometry: new Point(fromLonLat([station.longitude, station.latitude]))
+      geometry: new Point(fromLonLat([
+        parseFloat(station.longitude), 
+        parseFloat(station.latitude)
+      ]))
     })
-    feature.setStyle(getStationStyle(station))
-    feature.set('stationData', station)
+    feature.setStyle(getStationStyle(station, bikeNum))
+    feature.set('stationData', { ...station, bikeNum })  // 如果需要弹窗里用
     return feature
-  })
+  }).filter(Boolean) // 过滤掉空值
 
+  // 添加要素到图层
   vectorLayer.getSource().addFeatures(features)
 }
 
-const fixedDate = '2025-01-25'
-const currentHour = new Date().getHours()
-const selectedHour = ref(currentHour.toString().padStart(2, '0'))
+/**
+ * 处理小时选择变化
+ */
 const handleHourChange = async () => {
-  await fetchAllStationsBikeNum(fixedDate, selectedHour.value)
+  const predictTime = `${fixedDate}T${selectedHour.value}:00:00Z`
+  await fetchAllStationsStatus(predictTime)
 }
 
-const welcoming = ref('管理员，欢迎您！')
-const searchQuery = ref('')
-
-const handleSearch = async () => {
+/**
+ * 搜索站点功能
+ */
+ const handleSearch = () => {
   if (!searchQuery.value.trim()) return
-
-  // 调用 Nominatim API 进行地名搜索
-  const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery.value)}`
-  try {
-    const res = await fetch(url)
-    const results = await res.json()
-    if (results && results.length > 0) {
-      const { lat, lon } = results[0]
-      mapInstance.getView().animate({
-        center: fromLonLat([parseFloat(lon), parseFloat(lat)]),
-        zoom: 15,
-        duration: 1000
-      })
-    } else {
-      alert('未找到相关地点')
-    }
-  } catch (e) {
-    console.error('搜索地点失败:', e)
+  const matchedStations = stations.value.filter(station =>
+    station.station_name.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
+    station.station_id.toLowerCase().includes(searchQuery.value.toLowerCase())
+  )
+  if (matchedStations.length > 0) {
+    const station = matchedStations[0]
+    mapInstance.getView().animate({
+      center: fromLonLat([station.longitude, station.latitude]),
+      zoom: 15,
+      duration: 1000
+    })
+  } else {
+    alert('未找到相关站点')
   }
 }
+// const handleSearch = async () => {
+//   if (!searchQuery.value.trim()) return
 
+//   // 调用 Nominatim API 进行地名搜索
+//   const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery.value)}`
+//   try {
+//     const res = await fetch(url)
+//     const results = await res.json()
+//     if (results && results.length > 0) {
+//       const { lat, lon } = results[0]
+//       mapInstance.getView().animate({
+//         center: fromLonLat([parseFloat(lon), parseFloat(lat)]),
+//         zoom: 15,
+//         duration: 1000
+//       })
+//     } else {
+//       alert('未找到相关地点')
+//     }
+//   } catch (e) {
+//     console.error('搜索地点失败:', e)
+//   }
+// }
+
+/**
+ * 登出功能
+ */
 const logout = async () => {
   try {
-    await axios.post('/api/user/logout')
+    await request.post('/api/user/logout')
   } catch (error) {
     console.warn('登出失败，可忽略', error)
+  } finally {
+    router.push('/login')
   }
-  router.push('/login')
 }
 
+/**
+ * 初始化
+ * 组件挂载时获取站点位置和初始化地图
+ */
 onMounted(async () => {
   await fetchStationLocations()
 
@@ -169,14 +306,16 @@ onMounted(async () => {
   vectorLayer = new VectorLayer({ source: new VectorSource() })
   mapInstance.addLayer(vectorLayer)
 
-  stations.value.forEach(station => {
-    stationBikeCounts.value.set(station.station_id, 0)
-  })
-  updateMapDisplay()
-  await fetchAllStationsBikeNum(fixedDate, selectedHour.value)
+  // stations.value.forEach(station => {
+  //   stationBikeCounts.value.set(station.station_id, 0)
+  // })
+  // updateMapDisplay()
+  // 默认加载当前小时数据
+  const predictTime = `${fixedDate}T${selectedHour.value}:00:00Z`
+  await fetchAllStationsStatus(predictTime)
 })
-</script>
 
+</script>
 
 <template>
   <div class="app-container">
@@ -205,7 +344,7 @@ onMounted(async () => {
         <label>日期：</label>
         <span class="fixed-date">{{ fixedDate }}</span>
         <label>选择时段：</label>
-      <select v-model="selectedHour" @change="handleHourChange">
+        <select v-model="selectedHour" @change="handleHourChange">
         <option
           v-for="h in 24"
           :key="h"
@@ -213,9 +352,9 @@ onMounted(async () => {
           :disabled="(h - 1) < currentHour"
           :class="{ 'disabled-option': (h - 1) < currentHour }"
         >
-          {{ (h - 1).toString().padStart(2, '0') }}:00
-        </option>
-      </select>
+            {{ (h - 1).toString().padStart(2, '0') }}:00
+          </option>
+        </select>
 
       </div>
       </div>
@@ -229,24 +368,35 @@ onMounted(async () => {
       </div>
       <div class="legend-item">
         <div class="legend-color" style="background-color: #4a90e2;"></div>
-        <span>中等 (20-50)</span>
+        <span>多 (20-50)</span>
       </div>
       <div class="legend-item">
         <div class="legend-color" style="background-color: #1a5490;"></div>
-        <span>多 (50+)</span>
+        <span>很多 (50+)</span>
       </div>
     </div>
 
     <!-- 加载状态 -->
     <div v-if="loading" class="loading-overlay">
-      <div class="loading-spinner">加载中...</div>
+      <div class="loading-spinner">
+        <div class="spinner"></div>
+        <span>加载中...</span>
+      </div>
     </div>
 
     <!-- Map -->
     <div ref="mapContainer" class="map-container"></div>
+    
+    <!-- 站点信息弹窗 -->
+    <StationInfo
+      :show="showStationInfoDialog"
+      :station="selectedStation"
+      :date="fixedDate"
+      :hour="selectedHour"
+      @update:show="handleDialogClose"
+    />
   </div>
 </template>
-
 
 <style scoped>
 .app-container {
@@ -308,14 +458,14 @@ onMounted(async () => {
   flex-direction: column;
   align-items: flex-start;
   margin-left: 20px;
-  gap: 8px;
+  gap: 20px;
   flex-shrink: 0; 
 }
 
 .user-top {
   display: flex;
   align-items: center;
-  gap: 40px;
+  gap: 150px;
 }
 
 .welcoming {
@@ -323,18 +473,7 @@ onMounted(async () => {
   white-space: nowrap; 
 }
 
-.datetime-picker {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-.date-input,
-.hour-select {
-  padding: 4px 8px;
-  font-size: 14px;
-}
-
-.logout-button, .search-button, .refresh-button {
+.logout-button, .search-button {
   padding: 6px 12px;
   background-color: #091275;
   color: white;
@@ -342,11 +481,35 @@ onMounted(async () => {
   border-radius: 4px;
   cursor: pointer;
   white-space: nowrap;
+  transition: background-color 0.2s;
 }
 
-.refresh-button:disabled {
-  background-color: #ccc;
-  cursor: not-allowed;
+.logout-button:hover, .search-button:hover {
+  background-color: #0a1580;
+}
+
+.right-time {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.right-time .fixed-date {
+  margin-right: 20px;
+  font-weight: bold;
+}
+
+.right-time select {
+  padding: 6px 10px;
+  font-size: 14px;
+  height: 30px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+}
+
+.disabled-option {
+  color: #999;
+  background-color: #f2f2f2;
 }
 
 .legend {
@@ -390,10 +553,28 @@ onMounted(async () => {
 }
 
 .loading-spinner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
   padding: 20px;
   background-color: white;
   border-radius: 8px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #091275;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
 .map-container {
@@ -407,6 +588,7 @@ onMounted(async () => {
   z-index: 1;
 }
 
+/* OpenLayers 样式覆盖 */
 .map-container :deep(.ol-zoom) {
   position: absolute;
   top: 0.5em;
@@ -470,22 +652,4 @@ onMounted(async () => {
   margin: 2px;
   border-radius: 2px;
 }
-
-.right-time .fixed-date {
-  margin-right: 40px;
-}
-
-.right-time select {
-  padding: 6px 10px;
-  font-size: 16px;
-  height: 30px;
-  border-radius: 4px;
-}
-
-.disabled-option {
-  color: #999;
-  background-color: #f2f2f2;
-}
-
-
 </style>
