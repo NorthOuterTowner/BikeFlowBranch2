@@ -15,12 +15,21 @@ request.interceptors.request.use(config => {
   return config
 }, error => Promise.reject(error))
 
-// request.interceptors.request.use(config => {
-//   const token = localStorage.getItem('token')
-//   if (token) {
-//     config.headers['Authorization'] = `Bearer ${token}`
-//   }
-//   return config
-// }, error => Promise.reject(error))
+// 用户注册
+export function register(username, password, email) {
+  return request.post('/admin/register',{
+    account: username,
+    password: password,
+    email:email
+  })
+}
+
+// 用户登录
+export function login(username, password) {
+  return request.post('/admin/login', {
+    account: username,
+    password: password
+  })
+}
 
 export default request
