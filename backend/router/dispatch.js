@@ -39,9 +39,9 @@ router.post('/change', authMiddleware, async (req, res) => {
         changeableStock = searchRows[0].stock
 
         if(changeableStock < number){
-            res.send({
-                code:500,
-                msg:"该调度方案不可行，调度数量超过本站点车余量"
+            res.status(422).send({//语义错误
+                code:422,
+                error:"该调度方案不可行，调度数量超过本站点车余量"
             })
         }else{
             const changeSql = "update `station_real_data` set `stock` = `stock` - ? where `station_id` = ? and `date` = ? and `hour` = ?;"
@@ -50,21 +50,21 @@ router.post('/change', authMiddleware, async (req, res) => {
             await db.async.run(changeSql,[number,startStation,dispatchDate,dispatchHour])
             await db.async.run(changeSql2,[number,endStation,dispatchDate,dispatchHour])
             
-            res.send({
+            res.status(200).send({
                 code:200,
                 msg:"开始进行调度"
             })
         }  
     }else{
         if(startRows.length == 0 || endRows.length == 0){
-            res.send({
-                code:500,
-                msg:"无效站点"
+            res.status(400).send({//客户端参数错误
+                code:400,
+                error:"无效站点"
             })
         }else{
-            res.send({
+            res.status(500).send({
                 code:500,
-                msg:"调度失败"
+                error:"调度失败"
             })
         }
     }

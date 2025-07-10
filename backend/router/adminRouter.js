@@ -30,15 +30,15 @@ router.post('/login', async (req, res) => {
     admin_info.password = ""
     admin_info.token = login_token
 
-    res.send({
+    res.status(200).send({
       code:200,
       msg:"登陆成功",
       data:admin_info
     })
   }else{
-      res.send({
+      res.status(500).send({
         code:500,
-        msg:"登录失败"
+        error:"登录失败"
       })
     }
   }
@@ -50,10 +50,14 @@ router.post('/register', async (req, res) => {
   //
   /*参数正确性 */
   if (!account || !password || !email) {
-    return res.send({ code: 400, msg: "参数不能为空" });
+    return res.status(400).send({ 
+      error: "参数不能为空" 
+    });
   }
   if (!emailRegex.test(email)) {
-    return res.send({ code: 400, msg: "邮箱格式不合法" });
+    return res.status(400).send({  
+      error: "邮箱格式不合法" 
+    });
   }
 
   /*避免同一账号重复注册 */
@@ -62,12 +66,13 @@ router.post('/register', async (req, res) => {
     const { rows: exists } = await db.async.all(checkSql, [account, email]);
 
     if (exists[0].cnt > 0) {
-      return res.send({ code: 409, msg: "账号或邮箱已被注册" });
+      return res.status(409).send({ 
+        error: "账号或邮箱已被注册" 
+      });
   }}catch (e) {
-    res.send({ 
-      code: 500, 
-      msg: "服务器内部错误", 
-      error: e.message 
+    res.status(500).send({ 
+      code:500,
+      error: "服务器内部错误"
     });
   }
   
@@ -138,7 +143,10 @@ router.post('/register', async (req, res) => {
           </html>`
   });
 
-  res.send({ code: 200, msg: "验证邮件已发送，请查收邮箱" });
+  res.status(200).send({ 
+    code:200,
+    error: "验证邮件已发送，请查收邮箱" 
+  });
 });
 
 router.get('/verify', async (req, res) => {
@@ -159,7 +167,7 @@ router.get('/verify', async (req, res) => {
 
   await redisClient.del(`register:${code}`);
 
-  res.send({
+  res.status(200).send({
     code:200,
     msg:"注册成功"
   });
