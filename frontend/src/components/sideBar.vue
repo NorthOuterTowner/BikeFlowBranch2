@@ -7,7 +7,7 @@
           <span class="arrow">{{ openSections.predict ? '▼' : '▶' }}</span>
         </h1>
         <ul v-show="openSections.predict">
-          <li><router-link to="/dashboard/mapView">地图</router-link></li>
+          <li><router-link to="/dashboard/mapView">预测地图</router-link></li>
           <li><router-link to="/dashboard/predict">预测结果</router-link></li>
         </ul>
       </div>
