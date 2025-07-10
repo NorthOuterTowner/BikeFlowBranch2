@@ -338,6 +338,7 @@ mapInstance.addControl(zoomControl)
   const predictTime = `${selectedDate.value}T${selectedHour.value}:00:00Z`
   await fetchPredictionData(predictTime)
 })
+
 </script>
 
 <template>
@@ -362,12 +363,14 @@ mapInstance.addControl(zoomControl)
           <div class="time-control">
             <label>日期：</label>
             <span class="selected-date">{{ selectedDate }}</span>
-            <label>时段：</label>
+            <label>选择时段：</label>
             <select v-model="selectedHour" @change="handleTimeChange">
               <option
                 v-for="h in 24"
                 :key="h"
                 :value="(h - 1).toString().padStart(2, '0')"
+                :disabled="(h - 1) < currentHour"
+                :class="{ 'disabled-option': (h - 1) < currentHour }"
               >
                 {{ (h - 1).toString().padStart(2, '0') }}:00
               </option>
