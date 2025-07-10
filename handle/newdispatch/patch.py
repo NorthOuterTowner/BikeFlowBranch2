@@ -1,0 +1,218 @@
+import sys
+sys.stdout.reconfigure(encoding='utf-8')
+
+import pandas as pd
+import networkx as nx
+from datetime import datetime, timedelta
+from sqlalchemy import create_engine, text
+import numpy as np
+
+# ---------- 配置数据库 ----------
+user = 'zq'
+password = '123456'
+host = 'localhost'
+database = 'traffic'
+
+try:
+    engine = create_engine(f"mysql+pymysql://{user}:{password}@{host}/{database}")
+except Exception as e:
+    print(f"[错误] 数据库连接失败：{e}")
+    sys.exit(1)
+
+def init_fake_status_data():
+    with engine.begin() as conn:
+        print("[初始化] 清空旧数据...")
+        conn.execute(text("DELETE FROM station_hourly_status"))
+
+    print("[初始化] 插入模拟数据...")
+
+    stations = ['S001', 'S002', 'S003', 'S004', 'S005', 'S006', 'S007']
+    base_time = datetime.strptime("2025-06-13 08:00:00", "%Y-%m-%d %H:%M:%S")
+
+    rows = []
+    for h in range(4):  # 08:00 - 11:00 共4小时
+        hour = (base_time + timedelta(hours=h)).hour
+        date_str = (base_time + timedelta(hours=h)).date().strftime("%Y-%m-%d")
+
+        for sid in stations:
+            # 多车站点：S001, S003, S006
+            if sid in ['S001', 'S003', 'S006']:
+                inflow = 60 + 10 * h
+                outflow = 5 + 2 * h
+                stock = 30 + 10 + 3 * h  # 初始就偏高
+
+            # 缺车站点：S002, S005, S007
+            elif sid in ['S002', 'S005', 'S007']:
+                inflow = 5 + h * 2
+                outflow = 50 + 8 * h
+                stock = 15 - 5 + h  # 初始偏低
+
+            # 正常站点 S004
+            else:
+                inflow = 15 + np.random.randint(-3, 4)
+                outflow = 15 + np.random.randint(-3, 4)
+                stock = 30 + np.random.randint(-5, 6)
+
+            rows.append((sid, date_str, hour, inflow, outflow, stock))
+
+    df = pd.DataFrame(rows, columns=['station_id', 'date', 'hour', 'inflow', 'outflow', 'stock'])
+    df.to_sql('station_hourly_status', engine, if_exists='append', index=False)
+    print(f"[初始化完成] 插入 {len(df)} 条数据")
+
+
+# ---------- 读取站点容量 ----------
+def load_station_capacities():
+    df = pd.read_sql("SELECT station_id, capacity FROM station_info", engine)
+    return dict(zip(df['station_id'], df['capacity']))
+
+# ---------- 获取时间段数据 ----------
+def get_3h_data(start_time, end_time):
+    sql = f"""
+    SELECT station_id, SUM(inflow) AS inflow, SUM(outflow) AS outflow, 
+           AVG(stock) AS stock
+    FROM station_hourly_status
+    WHERE CONCAT(date, ' ', LPAD(hour, 2, '0'), ':00:00') >= '{start_time}'
+      AND CONCAT(date, ' ', LPAD(hour, 2, '0'), ':00:00') < '{end_time}'
+    GROUP BY station_id
+    """
+    df = pd.read_sql(sql, engine)
+    return df
+
+# ---------- 计算距离（可扩展） ----------
+def compute_distance(sid1, sid2):
+    return 1  # 简化为常数，可拓展为地理计算或图计算
+
+# ---------- 生成调度图并求解 ----------
+def plan_dispatch(df, capacities):
+    import math
+    G = nx.DiGraph()
+    surplus_nodes, shortage_nodes = [], []
+
+    # 统计每个站点的 surplus / shortage
+    for _, row in df.iterrows():
+        sid = row['station_id']
+        cap = capacities.get(sid, 50)
+        min_thres, max_thres = 0.2 * cap, 0.8 * cap
+        expected = row['stock'] + row['inflow'] - row['outflow']
+
+        print(f"[检查] 站点 {sid} | cap={cap} | inflow={row['inflow']} outflow={row['outflow']} stock={row['stock']} ➜ 预计库存={expected:.1f}")
+
+        if expected < min_thres:
+            shortage = max(0, int(min_thres - expected))
+            if shortage > 0:
+                shortage_nodes.append((sid, shortage))
+                print(f" → 缺车站点: {sid} 需要 {shortage} 辆")
+        elif expected > max_thres:
+            surplus = max(0, int(expected - max_thres))
+            if surplus > 0:
+                surplus_nodes.append((sid, surplus))
+                print(f" → 多车站点: {sid} 可调出 {surplus} 辆")
+
+    print(f"\n[构建图] 调出站点：{len(surplus_nodes)} 个，调入站点：{len(shortage_nodes)} 个")
+
+    # 匹配供需总量，确保供需平衡
+    total_supply = sum(q for _, q in surplus_nodes)
+    total_demand = sum(q for _, q in shortage_nodes)
+    balanced_qty = min(total_supply, total_demand)
+
+    # 截断 surplus_nodes
+    new_surplus = []
+    remain = balanced_qty
+    for sid, qty in surplus_nodes:
+        q = min(qty, remain)
+        if q > 0:
+            new_surplus.append((sid, q))
+            remain -= q
+        if remain <= 0:
+            break
+
+    # 截断 shortage_nodes
+    new_shortage = []
+    remain = balanced_qty
+    for sid, qty in shortage_nodes:
+        q = min(qty, remain)
+        if q > 0:
+            new_shortage.append((sid, q))
+            remain -= q
+        if remain <= 0:
+            break
+
+    # 设置节点的需求
+    for sid, qty in new_surplus:
+        G.add_node(sid, demand=-qty)
+    for sid, qty in new_shortage:
+        G.add_node(sid, demand=qty)
+
+    # 添加边
+    for from_id, from_qty in new_surplus:
+        for to_id, to_qty in new_shortage:
+            qty = min(from_qty, to_qty)
+            if qty > 0:
+                cost = compute_distance(from_id, to_id)
+                G.add_edge(from_id, to_id, capacity=qty, weight=cost)
+                print(f" → 边：{from_id} ➜ {to_id} 容量={qty} 成本={cost}")
+
+    if len(G.edges) == 0:
+        print("没有生成任何搬运边，图为空，返回空结果")
+        return []
+
+    try:
+        flow_dict = nx.network_simplex(G)[1]
+    except Exception as e:
+        print(f"[错误] 最小费用流求解失败：{e}")
+        return []
+
+    actions = []
+    for u, v_dict in flow_dict.items():
+        for v, bikes in v_dict.items():
+            if bikes > 0:
+                actions.append({'from': u, 'to': v, 'bikes': bikes})
+                print(f"搬运计划：{u} ➜ {v} 搬 {int(bikes)} 辆")
+
+    return actions
+
+# ---------- 格式化调度动作 ----------
+def format_schedule_action(actions):
+    if not actions:
+        return ""
+    return ",".join(f"{a['from']}:{a['to']}:{int(a['bikes'])}" for a in actions)
+
+# ---------- 写入数据库 ----------
+def save_schedule_to_db(date_str, hour, schedule_str):
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("""
+                INSERT INTO station_schedule (date, hour, schedule_action, updated_at)
+                VALUES (:date, :hour, :action, NOW())
+                ON DUPLICATE KEY UPDATE 
+                    schedule_action = VALUES(schedule_action),
+                    updated_at = NOW()
+            """), {"date": date_str, "hour": hour, "action": schedule_str})
+    except Exception as e:
+        print(f"[错误] 写入调度结果失败：{e}")
+
+# ---------- 主调度函数 ----------
+def run_scheduler_for_timepoint(date_str, hour):
+    print(f"\n[开始调度] 时间点：{date_str} {hour:02d} 点")
+    capacities = load_station_capacities()
+    start_time = f"{date_str} {str(hour).zfill(2)}:00:00"
+    end_dt = datetime.strptime(start_time, "%Y-%m-%d %H:%M:%S") + timedelta(hours=3)
+    end_time = end_dt.strftime("%Y-%m-%d %H:%M:%S")
+
+    df = get_3h_data(start_time, end_time)
+    if df.empty:
+        print(f"[警告] 时间段内无数据：{start_time} ~ {end_time}")
+        return
+
+    actions = plan_dispatch(df, capacities)
+    schedule_str = format_schedule_action(actions)
+
+    print(f"[调度完成] 调度动作数：{len(actions)}")
+    print(f"[调度方案字符串] {schedule_str if schedule_str else '(空)'}")
+
+    save_schedule_to_db(date_str, hour, schedule_str)
+
+# ---------- 示例入口 ----------
+if __name__ == '__main__':
+    #init_fake_status_data()
+    run_scheduler_for_timepoint("2025-06-13", 9)
