@@ -23,15 +23,6 @@ dist-ssr
 *.sln
 *.sw?
 
-/public/*
-!/public/Cesium/
-/public/Cesium/*
-!/public/Cesium/Assets/
-!/public/Cesium/Widgets/
-!/public/Cesium/ThirdParty/
-!/public/Cesium/Workers/
-
-
 # Node modules
 node_modules/
 .env
