@@ -12,9 +12,8 @@ import Point from 'ol/geom/Point'
 import VectorLayer from 'ol/layer/Vector'
 import VectorSource from 'ol/source/Vector'
 import Style from 'ol/style/Style'
-import Circle from 'ol/style/Circle'
 import Fill from 'ol/style/Fill'
-import Stroke from 'ol/style/Stroke'
+import Icon from 'ol/style/Icon'
 import Text from 'ol/style/Text'
 import StationInfo from '../../views/dashboard/stationInfo.vue'
 
@@ -26,42 +25,34 @@ const router = useRouter()
 // 状态管理
 const stations = ref([])
 const stationStatusMap = ref({})  // key: station_id, value: { stock, inflow, outflow }
-//const stationBikeCounts = ref(new Map())
 const loading = ref(false)
 const welcoming = ref('管理员，欢迎您！')
 const searchQuery = ref('')
-const fixedDate = '2025-01-01'
+const fixedDate = '2025-06-12'
 const currentHour = new Date().getHours()
 const selectedHour = ref(currentHour.toString().padStart(2, '0'))
 const showStationInfoDialog = ref(false)
 const selectedStation = ref(null)
 
-/**
- * 根据单车数量返回对应颜色
- * @param count 单车数量
- */
-function getColorByBikeCount(count) {
-  if (count >= 50) return '#1a5490'
-  else if (count >= 20) return '#4a90e2'
-  else return '#87ceeb'
-}
-
-function getStationStyle(station, bikeNum = 0) {
-  //const bikeCount = stationBikeCounts.value.get(station.station_id) || 0
-  const color = getColorByBikeCount(bikeNum)
+function getStationStyle(bikeNum = 0) {
+  let iconSrc = '/icons/BlueLocationRound.svg'
+  if (bikeNum > 10) {
+    iconSrc = '/icons/RedLocationRound.svg'
+  } else if (bikeNum > 9) {
+    iconSrc = '/icons/YellowLocationRound.svg'
+  }
 
   return new Style({
-    image: new Circle({
-      radius: 8,
-      fill: new Fill({ color }),
-      stroke: new Stroke({ color: '#ffffff', width: 2 })
+    image: new Icon({
+      src: iconSrc,
+      scale: 1.5,
+      anchor: [0.5, 1]
     }),
     text: new Text({
       text: bikeNum.toString(),
       fill: new Fill({ color: '#ffffff' }),
       font: '12px Arial',
-      textAlign: 'center',
-      textBaseline: 'middle'
+      offsetY: -20
     })
   })
 }
@@ -239,13 +230,15 @@ function updateMapDisplay() {
         parseFloat(station.latitude)
       ]))
     })
-    feature.setStyle(getStationStyle(station,bikeNum))
+    feature.setStyle(getStationStyle(bikeNum))
     feature.set('stationData', { ...station, bikeNum })
     return feature
   }).filter(Boolean) // 过滤掉空值
   // 添加要素到图层
   vectorLayer.getSource().addFeatures(features)
   console.log(`已添加 ${features.length} 个站点到地图`)
+  console.log('当前 vectorLayer 中要素数量:', vectorLayer.getSource().getFeatures().length)
+
 }
 
 // 事件处理函数
@@ -316,38 +309,11 @@ onMounted(async () => {
     // 初始化地图
     initializeMap()
     // 获取站点数据
-    //const stationData = 
     await fetchStationLocations()
     const predictTime = `${fixedDate}T${selectedHour.value}:00:00Z`
     await fetchAllStationsStatus(predictTime)
-    // if (stationData.length > 0) {
-    //   // 初始化地图显示
-    //   updateMapDisplay()
-      
-    //   // 获取初始单车数量数据
-    //   await fetchAllStationsBikeNum(fixedDate, selectedHour.value)
-    // } else {
-    //   console.warn('没有获取到站点数据')
-    // }
-    
   } catch (error) {
     console.error('组件初始化失败:', error)
-  // }
-  // mapInstance = new Map({
-  //   target: mapContainer.value,
-  //   layers: [new TileLayer({ source: new OSM() })],
-  //   view: new View({
-  //     center: fromLonLat([-74.0576, 40.7312]),
-  //     zoom: 11,
-  //     maxZoom: 20,
-  //     minZoom: 3
-  //   })
-  // })
-
-  // vectorLayer = new VectorLayer({ source: new VectorSource() })
-  // mapInstance.addLayer(vectorLayer)
-  // const predictTime = `${fixedDate}T${selectedHour.value}:00:00Z`
-  // await fetchAllStationsStatus(predictTime)
 }
 })
 
@@ -399,18 +365,19 @@ onMounted(async () => {
     <!-- 图例 -->
     <div class="legend">
       <div class="legend-item">
-        <div class="legend-color" style="background-color: #87ceeb;"></div>
-        <span>少 (0-20)</span>
+        <img src="/icons/BlueLocationRound.svg" width="24" height="24" alt="少">
+        <span>少（0–5）</span>
       </div>
       <div class="legend-item">
-        <div class="legend-color" style="background-color: #4a90e2;"></div>
-        <span>多 (20-50)</span>
+        <img src="/icons/YellowLocationRound.svg" width="24" height="24" alt="中">
+        <span>中（6–10）</span>
       </div>
       <div class="legend-item">
-        <div class="legend-color" style="background-color: #1a5490;"></div>
-        <span>很多 (50+)</span>
+        <img src="/icons/RedLocationRound.svg" width="24" height="24" alt="多">
+        <span>多（11+）</span>
       </div>
     </div>
+
 
     <!-- 加载状态 -->
     <div v-if="loading" class="loading-overlay">
