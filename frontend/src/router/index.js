@@ -8,6 +8,7 @@ import MapView from '../views/dashboard/mapView.vue'
 import Predict from '../views/dashboard/Predict.vue'
 import Settings from '../views/dashboard/Settings.vue'
 import Profile from '../views/dashboard/profile.vue'
+import schedule from '../views/dashboard/schedule.vue'
 
 const routes = [
   { path: '/', redirect: '/login' },    // 默认跳到 dashboard
@@ -20,6 +21,7 @@ const routes = [
         { path: 'predict', component: Predict },
         { path: 'settings', component: Settings },
         { path: 'profile', component: Profile },
+        {path: 'schedule', component: schedule },
     ]
   },
 ]
