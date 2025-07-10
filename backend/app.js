@@ -34,7 +34,6 @@ app.use(function(req,res,next){
 app.use(express.json());
 app.use(limiter);
 
-app.use("/test",require("./router/testRouter"));
 app.use("/admin",require("./router/adminRouter"));
 app.use("/reset",require("./router/resetRouter"));
 app.use("/stations",require("./router/stationsRouter"));
