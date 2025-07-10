@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, onMounted, nextTick, computed } from 'vue'
 import request from '../../api/axios'
 import { useRouter } from 'vue-router'
 import Map from 'ol/Map'
@@ -18,7 +18,7 @@ import Text from 'ol/style/Text'
 import StationInfo from '../../views/dashboard/stationInfo.vue'
 
 const mapContainer = ref(null)
-const mapInstance = ref(null)
+let mapInstance = null
 let vectorLayer = null
 const router = useRouter()
 
@@ -28,7 +28,9 @@ const stationStatusMap = ref({})  // key: station_id, value: { stock, inflow, ou
 const loading = ref(false)
 const welcoming = ref('管理员，欢迎您！')
 const searchQuery = ref('')
-const fixedDate = '2025-06-12'
+const fixedDate = computed(() => {
+  return localStorage.getItem('selectedDate') || new Date().toISOString().split('T')[0]
+})
 const currentHour = new Date().getHours()
 const selectedHour = ref(currentHour.toString().padStart(2, '0'))
 const showStationInfoDialog = ref(false)
@@ -57,9 +59,6 @@ function getStationStyle(bikeNum = 0) {
   })
 }
 
-/**
- * 获取所有站点位置
- */
 async function fetchStationLocations() {
   console.log('进到获取站点位置函数')
   try {
@@ -88,11 +87,44 @@ async function fetchStationLocations() {
   }
 }
 
+// async function fetchStationBikeNum(stationId, date, hour) {
+//   try {
+//     const response = await request.get('/stations/bikeNum', {
+//       params: { station_id: stationId, date, hour }
+//     })
+//     return response.data.bikeNum || 0
+//   } catch (error) {
+//     console.error(`获取站点 ${stationId} 单车数量失败:`, error)
+//     return 0
+//   }
+// }
+
+// async function fetchAllStationsBikeNum(date, hour) {
+//   if (!stations.value.length) return
+
+//   loading.value = true
+//   const bikeCounts = new Map()
+
+//   try {
+//     const promises = stations.value.map(async station => {
+//       const bikeNum = await fetchStationBikeNum(station.station_id, date, hour)
+//       bikeCounts.set(station.station_id, bikeNum)
+//     })
+//     await Promise.all(promises)
+//     stationBikeCounts.value = bikeCounts
+//     updateMapDisplay()
+//   } catch (error) {
+//     console.error('获取站点单车数量失败:', error)
+//   } finally {
+//     loading.value = false
+//   }
+// }
+
 /**
  * 获取指定时间所有站点的单车数量和流量
  * @param predictTime 预测时间，格式为 'HH:mm:ss'(疑似)
  */
- async function fetchAllStationsStatus(predictTime) {
+async function fetchAllStationsStatus(predictTime) {
   try {
     loading.value = true
     const res = await request.get('/predict/stations/all', {
@@ -119,67 +151,13 @@ async function fetchStationLocations() {
   }
 }
 
-// async function fetchStationBikeNum(stationId, date, hour) {
-//   try {
-//     const response = await request.get('/stations/bikeNum', {
-//       params: { 
-//         station_id: stationId, 
-//         date: date, 
-//         hour: hour 
-//       }
-//     })
-//     // 处理不同的响应格式
-//     if (response.data && typeof response.data.bikeNum === 'number') {
-//       return response.data.bikeNum
-//     } else if (typeof response.data === 'number') {
-//       return response.data
-//     } else {
-//       console.warn(`站点 ${stationId} 返回数据格式异常:`, response.data)
-//       return 0
-//     }
-//   } catch (error) {
-//     console.error(`获取站点 ${stationId} 单车数量失败:`, error)
-//     return 0
-//   }
-// }
-
-// async function fetchAllStationsBikeNum(date, hour) {
-//   if (!stations.value || stations.value.length === 0) {
-//     console.warn('没有站点数据，跳过获取单车数量')
-//     return
-//   }
-
-//   loading.value = true
-//   console.log(`开始获取 ${date} ${hour}:00 的单车数量数据`)
-  
-//   try {
-//     const bikeCounts = new Map()
-//     const promises = stations.value.map(async station => {
-//       const bikeNum = await fetchStationBikeNum(station.station_id, date, hour)
-//       bikeCounts.set(station.station_id, bikeNum)
-//       return { stationId: station.station_id, bikeNum }
-//     })
-//     const results = await Promise.all(promises)
-//     console.log('单车数量获取结果:', results)
-//     stationBikeCounts.value = bikeCounts
-//     // 更新地图显示
-//     updateMapDisplay()
-//   } catch (error) {
-//     console.error('获取站点单车数量失败:', error)
-//   } finally {
-//     loading.value = false
-//   }
-// }
-
-
-// 地图相关函数
 function initializeMap() {
   if (!mapContainer.value) {
     console.error('地图容器未找到')
     return
   }
 
-  mapInstance.value = new Map({
+  mapInstance = new Map({
     target: mapContainer.value,
     layers: [
       new TileLayer({
@@ -194,18 +172,21 @@ function initializeMap() {
     })
   })
 
-  // 创建矢量图层
   vectorLayer = new VectorLayer({
     source: new VectorSource()
   })
-  mapInstance.value.addLayer(vectorLayer)
 
-  // 绑定点击事件
-  mapInstance.value.on('singleclick', onMapClick)
-  
+  mapInstance.addLayer(vectorLayer)
+
+  mapInstance.on('singleclick', onMapClick)
+
   console.log('地图初始化完成')
 }
 
+
+/**
+ * 更新地图显示
+ */
 function updateMapDisplay() {
   if (!mapInstance || !vectorLayer || !stations.value.length) {
     console.warn('地图未初始化或没有站点数据')
@@ -234,6 +215,7 @@ function updateMapDisplay() {
     feature.set('stationData', { ...station, bikeNum })
     return feature
   }).filter(Boolean) // 过滤掉空值
+
   // 添加要素到图层
   vectorLayer.getSource().addFeatures(features)
   console.log(`已添加 ${features.length} 个站点到地图`)
@@ -244,7 +226,7 @@ function updateMapDisplay() {
 // 事件处理函数
 function onMapClick(evt) {
 if (!mapInstance) return
-mapInstance.value.forEachFeatureAtPixel(evt.pixel, function(feature) {
+mapInstance.forEachFeatureAtPixel(evt.pixel, function(feature) {
   const station = feature.get('stationData')
   if (station) {
     console.log('点击了站点:', station)
@@ -261,29 +243,30 @@ selectedStation.value = null
 }
 
 const handleHourChange = async () => {
-  const predictTime = `${fixedDate}T${selectedHour.value}:00:00Z`
-  console.log('时间变更为:', selectedHour.value)
+  const predictTime = `${fixedDate.value}T${selectedHour.value}:00:00Z`
   await fetchAllStationsStatus(predictTime)
 }
 
-function handleSearch() {
-  const query = searchQuery.value.trim()
-  if (!query) return
-  const matched = stations.find(s =>
-    s.station_name.toLowerCase().includes(query.toLowerCase()) ||
-    s.station_id.toLowerCase().includes(query.toLowerCase())
+/**
+ * 搜索站点功能
+ */
+ const handleSearch = () => {
+  if (!searchQuery.value.trim()) return
+  const matchedStations = stations.value.filter(station =>
+    station.station_name.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
+    station.station_id.toLowerCase().includes(searchQuery.value.toLowerCase())
   )
-  if (matched) {
-    mapInstance.value.getView().animate({
-      center: fromLonLat([parseFloat(matched.longitude), parseFloat(matched.latitude)]),
+  if (matchedStations.length > 0) {
+    const station = matchedStations[0]
+    mapInstance.getView().animate({
+      center: fromLonLat([station.longitude, station.latitude]),
       zoom: 15,
       duration: 1000
     })
   } else {
     alert('未找到相关站点')
   }
-}
-
+ }
 
 /**
  * 登出功能
@@ -292,7 +275,7 @@ const logout = async () => {
   try {
     await request.post('/api/user/logout')
   } catch (error) {
-    console.warn('登出失败，继续执行跳转', error)
+    console.warn('登出失败，可忽略', error)
   } finally {
     router.push('/login')
   }
@@ -314,7 +297,7 @@ onMounted(async () => {
     await fetchAllStationsStatus(predictTime)
   } catch (error) {
     console.error('组件初始化失败:', error)
-}
+  }
 })
 
 </script>
