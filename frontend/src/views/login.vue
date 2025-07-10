@@ -28,7 +28,7 @@
 <script setup>
   import { ref } from 'vue'
   import { useRouter } from 'vue-router'
-  import { login } from '../api/auth' // 假设你有一个 auth.js 文件处理登录请求
+  import { login } from '../api/axios' 
   import { useMessageStore } from '../store/messageStore'  // 根据实际路径调整
   import { NInput, NButton, NAlert, NSpin } from 'naive-ui'
 

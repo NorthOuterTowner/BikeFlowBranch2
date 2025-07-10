@@ -14,6 +14,7 @@ app.use((req, res, next) => {
 })
 
 
+
 /* API rate limit */
 const limiter = rateLimit({
 	windowMs: 1000, // 1 second
@@ -25,9 +26,11 @@ const limiter = rateLimit({
 
 /* Cross-Origin Requests */
 app.use(function(req,res,next){
-    res.header("Access-Control-Allow-Origin","*");
+    const allowedOrigin = process.env.CORS_ORIGIN;
+    res.header("Access-Control-Allow-Origin", allowedOrigin);
     res.header("Access-Control-Allow-Headers","*");
     res.header("Access-Control-Allow-Methods","DELETE,PUT,POST,GET,OPTIONS");
+    res.header("Access-Control-Allow-Credentials", "true");
     if(req.method == "OPTIONS") res.sendStatus(200);
     else next();
 });
@@ -47,6 +50,6 @@ app.use("/stations",require("./router/stationsRouter"));
 app.use("/predict",require("./router/predictRouter"));
 app.use("/dispatch",require("./router/dispatch"));
 
-app.listen(PORT, () => {
-  console.log(`Server is running at http://localhost:${PORT}`);
+app.listen(PORT,'0.0.0.0', () => {
+  console.log(`Server is running on port ${PORT}`);
 });

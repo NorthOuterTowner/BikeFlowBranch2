@@ -12,9 +12,8 @@ import Point from 'ol/geom/Point'
 import VectorLayer from 'ol/layer/Vector'
 import VectorSource from 'ol/source/Vector'
 import Style from 'ol/style/Style'
-import Circle from 'ol/style/Circle'
 import Fill from 'ol/style/Fill'
-import Stroke from 'ol/style/Stroke'
+import Icon from 'ol/style/Icon'
 import Text from 'ol/style/Text'
 import StationInfo from '../../views/dashboard/stationInfo.vue'
 
@@ -26,7 +25,6 @@ const router = useRouter()
 // 状态管理
 const stations = ref([])
 const stationStatusMap = ref({})  // key: station_id, value: { stock, inflow, outflow }
-//const stationBikeCounts = ref(new Map())
 const loading = ref(false)
 const welcoming = ref('管理员，欢迎您！')
 const searchQuery = ref('')
@@ -35,33 +33,28 @@ const fixedDate = computed(() => {
 })
 const currentHour = new Date().getHours()
 const selectedHour = ref(currentHour.toString().padStart(2, '0'))
+const showStationInfoDialog = ref(false)
+const selectedStation = ref(null)
 
-/**
- * 根据单车数量返回对应颜色
- * @param count 单车数量
- */
-function getColorByBikeCount(count) {
-  if (count >= 50) return '#1a5490'
-  else if (count >= 20) return '#4a90e2'
-  else return '#87ceeb'
-}
-
-function getStationStyle(station, bikeNum = 0) {
-  //const bikeCount = stationBikeCounts.value.get(station.station_id) || 0
-  const color = getColorByBikeCount(bikeNum)
+function getStationStyle(bikeNum = 0) {
+  let iconSrc = '/icons/BlueLocationRound.svg'
+  if (bikeNum > 10) {
+    iconSrc = '/icons/RedLocationRound.svg'
+  } else if (bikeNum > 9) {
+    iconSrc = '/icons/YellowLocationRound.svg'
+  }
 
   return new Style({
-    image: new Circle({
-      radius: 8,
-      fill: new Fill({ color }),
-      stroke: new Stroke({ color: '#ffffff', width: 2 })
+    image: new Icon({
+      src: iconSrc,
+      scale: 1.5,
+      anchor: [0.5, 1]
     }),
     text: new Text({
       text: bikeNum.toString(),
       fill: new Fill({ color: '#ffffff' }),
       font: '12px Arial',
-      textAlign: 'center',
-      textBaseline: 'middle'
+      offsetY: -20
     })
   })
 }
@@ -156,36 +149,40 @@ async function fetchAllStationsStatus(predictTime) {
   } finally {
     loading.value = false
   }
-  // loading.value = true
-  // try {
-  //   // 这里模拟假数据，格式参考你接口返回结构
-  //   const fakeResponse = {
-  //     data: {
-  //       stations_status: [
-  //         { station_id: 'JC019', stock: 5, inflow: 2, outflow: 1 },
-  //         { station_id: 'HB611', stock: 3, inflow: 1, outflow: 2 },
-  //         { station_id: 'JC076', stock: 7, inflow: 3, outflow: 1 },
-  //         // 更多站点数据按需补充
-  //       ]
-  //     }
-  //   }
-  //   const newMap = {}
-  //   fakeResponse.data.stations_status.forEach(item => {
-  //     newMap[item.station_id] = {
-  //       stock: item.stock,
-  //       inflow: item.inflow,
-  //       outflow: item.outflow
-  //     }
-  //   })
-  //   stationStatusMap.value = newMap
-  //   console.log('站点状态（假数据）:', stationStatusMap.value)
-  //   updateMapDisplay()
-  // } catch (error) {
-  //   console.error('假数据处理出错:', error)
-  // } finally {
-  //   loading.value = false
-  // }
 }
+
+function initializeMap() {
+  if (!mapContainer.value) {
+    console.error('地图容器未找到')
+    return
+  }
+
+  mapInstance = new Map({
+    target: mapContainer.value,
+    layers: [
+      new TileLayer({
+        source: new OSM()
+      })
+    ],
+    view: new View({
+      center: fromLonLat([-74.0576, 40.7312]), // 纽约坐标
+      zoom: 11,
+      maxZoom: 20,
+      minZoom: 3
+    })
+  })
+
+  vectorLayer = new VectorLayer({
+    source: new VectorSource()
+  })
+
+  mapInstance.addLayer(vectorLayer)
+
+  mapInstance.on('singleclick', onMapClick)
+
+  console.log('地图初始化完成')
+}
+
 
 /**
  * 更新地图显示
@@ -201,30 +198,52 @@ function updateMapDisplay() {
 
   // 创建新的要素
   const features = stations.value.map(station => {
-    // 根据新接口拿到 status
-    const status = stationStatusMap.value[station.station_id]
-    const bikeNum = status?.stock ?? 0
-    // 也可以把 bikeNum 塞到 stationData 里，方便 popup 用
+    // 验证坐标数据
+    if (!station.longitude || !station.latitude) {
+      console.warn('站点坐标数据缺失:', station)
+      return null
+    }
+    const status = stationStatusMap.value[station.station_id] || {}
+    const bikeNum = status.stock ?? 0
     const feature = new Feature({
       geometry: new Point(fromLonLat([
         parseFloat(station.longitude), 
         parseFloat(station.latitude)
       ]))
     })
-    feature.setStyle(getStationStyle(station, bikeNum))
-    feature.set('stationData', { ...station, bikeNum })  // 如果需要弹窗里用
+    feature.setStyle(getStationStyle(bikeNum))
+    feature.set('stationData', { ...station, bikeNum })
     return feature
   }).filter(Boolean) // 过滤掉空值
 
   // 添加要素到图层
   vectorLayer.getSource().addFeatures(features)
+  console.log(`已添加 ${features.length} 个站点到地图`)
+  console.log('当前 vectorLayer 中要素数量:', vectorLayer.getSource().getFeatures().length)
+
 }
 
-/**
- * 处理小时选择变化
- */
+// 事件处理函数
+function onMapClick(evt) {
+if (!mapInstance) return
+mapInstance.forEachFeatureAtPixel(evt.pixel, function(feature) {
+  const station = feature.get('stationData')
+  if (station) {
+    console.log('点击了站点:', station)
+    selectedStation.value = station
+    showStationInfoDialog.value = true
+    return true // 停止遍历
+  }
+})
+}
+
+const handleDialogClose = () => {
+showStationInfoDialog.value = false
+selectedStation.value = null
+}
+
 const handleHourChange = async () => {
-  const predictTime = `${fixedDate}T${selectedHour.value}:00:00Z`
+  const predictTime = `${fixedDate.value}T${selectedHour.value}:00:00Z`
   await fetchAllStationsStatus(predictTime)
 }
 
@@ -247,29 +266,7 @@ const handleHourChange = async () => {
   } else {
     alert('未找到相关站点')
   }
-}
-// const handleSearch = async () => {
-//   if (!searchQuery.value.trim()) return
-
-//   // 调用 Nominatim API 进行地名搜索
-//   const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery.value)}`
-//   try {
-//     const res = await fetch(url)
-//     const results = await res.json()
-//     if (results && results.length > 0) {
-//       const { lat, lon } = results[0]
-//       mapInstance.getView().animate({
-//         center: fromLonLat([parseFloat(lon), parseFloat(lat)]),
-//         zoom: 15,
-//         duration: 1000
-//       })
-//     } else {
-//       alert('未找到相关地点')
-//     }
-//   } catch (e) {
-//     console.error('搜索地点失败:', e)
-//   }
-// }
+ }
 
 /**
  * 登出功能
@@ -289,29 +286,18 @@ const logout = async () => {
  * 组件挂载时获取站点位置和初始化地图
  */
 onMounted(async () => {
-  await fetchStationLocations()
-
-  mapInstance = new Map({
-    target: mapContainer.value,
-    layers: [new TileLayer({ source: new OSM() })],
-    view: new View({
-      center: fromLonLat([-74.0576, 40.7312]),
-      zoom: 11,
-      maxZoom: 20,
-      minZoom: 3
-    })
-  })
-
-  vectorLayer = new VectorLayer({ source: new VectorSource() })
-  mapInstance.addLayer(vectorLayer)
-
-  // stations.value.forEach(station => {
-  //   stationBikeCounts.value.set(station.station_id, 0)
-  // })
-  // updateMapDisplay()
-  // 默认加载当前小时数据
-  const predictTime = `${fixedDate}T${selectedHour.value}:00:00Z`
-  await fetchAllStationsStatus(predictTime)
+  try {
+    // 等待 DOM 渲染完成
+    await nextTick()
+    // 初始化地图
+    initializeMap()
+    // 获取站点数据
+    await fetchStationLocations()
+    const predictTime = `${fixedDate}T${selectedHour.value}:00:00Z`
+    await fetchAllStationsStatus(predictTime)
+  } catch (error) {
+    console.error('组件初始化失败:', error)
+  }
 })
 
 </script>
@@ -362,18 +348,19 @@ onMounted(async () => {
     <!-- 图例 -->
     <div class="legend">
       <div class="legend-item">
-        <div class="legend-color" style="background-color: #87ceeb;"></div>
-        <span>少 (0-20)</span>
+        <img src="/icons/BlueLocationRound.svg" width="24" height="24" alt="少">
+        <span>少（0–5）</span>
       </div>
       <div class="legend-item">
-        <div class="legend-color" style="background-color: #4a90e2;"></div>
-        <span>多 (20-50)</span>
+        <img src="/icons/YellowLocationRound.svg" width="24" height="24" alt="中">
+        <span>中（6–10）</span>
       </div>
       <div class="legend-item">
-        <div class="legend-color" style="background-color: #1a5490;"></div>
-        <span>很多 (50+)</span>
+        <img src="/icons/RedLocationRound.svg" width="24" height="24" alt="多">
+        <span>多（11+）</span>
       </div>
     </div>
+
 
     <!-- 加载状态 -->
     <div v-if="loading" class="loading-overlay">
