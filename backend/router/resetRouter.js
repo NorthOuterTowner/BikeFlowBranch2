@@ -8,9 +8,11 @@ const nodemailer = require("nodemailer");
 const redis = require("redis")
 const redisClient = require("../db/redis")
 
+const authMiddleware = require("../utils/auth")
+
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-router.post('/account',async (req, res) => {
+router.post('/account',authMiddleware,async (req, res) => {
     let {oldName,newName} = req.body
     const sql = 'select count(*) as cnt from `admin` where `account` = ?'
     let { err, rows } = await db.async.all(sql,[newName])
@@ -38,7 +40,7 @@ router.post('/account',async (req, res) => {
     }
 });
 
-router.post('/pwd', async (req, res) => {
+router.post('/pwd', authMiddleware, async (req, res) => {
   const { email, newPassword } = req.body;
 
   if (!email || !newPassword) {
