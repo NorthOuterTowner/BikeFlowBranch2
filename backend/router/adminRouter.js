@@ -38,7 +38,7 @@ router.post('/login', async (req, res) => {
       raw:true
     });
   }catch(err){
-    console.log("ADminContent Wrong")
+    console.log("AdminContent Wrong")
   }
 
   if (AdminContent!=null/*err == null && rows.length > 0*/){
@@ -94,10 +94,18 @@ router.post('/register', async (req, res) => {
 
   /*避免同一账号重复注册 */
   try {
-    const checkSql = "SELECT count(*) as `cnt` FROM `admin` WHERE `account` = ? OR `email` = ?";
-    const { rows: exists } = await db.async.all(checkSql, [account, email]);
+    const count = await Admin.count({
+      where: {
+        [Op.or]: [
+          { account: account },
+          { email: email }
+        ]
+      }
+    });
+    //const checkSql = "SELECT count(*) as `cnt` FROM `admin` WHERE `account` = ? OR `email` = ?";
+    //const { rows: exists } = await db.async.all(checkSql, [account, email]);
 
-    if (exists[0].cnt > 0) {
+    if (count > 0) {
       return res.status(409).send({ 
         error: "账号或邮箱已被注册" 
       });
@@ -244,10 +252,15 @@ router.get('/verify', async (req, res) => {
   const { account, password, email } = JSON.parse(json);
 
   // insert into info of user
-  await db.async.run(
+  await Admin.create({
+    account: account,
+    password: password,
+    email: email
+  });
+  /*await db.async.run(
     "INSERT INTO `admin` (`account`,`password`,`email`) VALUES (?,?,?)",
     [account, password, email]
-  );
+  );*/
 
   await redisClient.del(`register:${code}`);
 
