@@ -6,7 +6,12 @@ const crypto = require('crypto');
 const fs = require('fs');
 const nodemailer = require("nodemailer");
 const redis = require("redis")
-const redisClient = require("../db/redis")
+const redisClient = require("../db/redis");
+
+const sequelize = require('../orm/sequelize'); // 确保路径正确
+const { DataTypes } = require('sequelize')
+const AdminModel = require('../orm/models/Admin');
+const Admin = AdminModel(sequelize,DataTypes)
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -20,17 +25,36 @@ router.post('/login', async (req, res) => {
   const hash = crypto.createHash('sha256');
   hash.update(password);
   const hashpwd = hash.digest('hex');
+  
+  //ORM
+  let AdminContent;
+  try{
+    AdminContent = await Admin.findOne({
+      attributes: ['account', 'password'], 
+      where:{
+        account:account,
+        password:hashpwd
+      },
+      raw:true
+    });
+  }catch(err){
+    console.log("ADminContent Wrong")
+  }
 
-  const sql = "select * from `admin` where `account` = ? AND `password` = ?"
-  let {err,rows} = await db.async.all(sql,[account,hashpwd])
-
-  if (err == null && rows.length > 0){
-    let login_account = rows[0].account
+  if (AdminContent!=null/*err == null && rows.length > 0*/){
+    let login_account = AdminContent.account
     let login_token = uuidv4();
-    const set_token_sql = "update `admin` set `token` = ? where `account` = ?"
-    await db.async.run(set_token_sql,[login_token,account])
+    console.log("3")
+    try{
+      await Admin.update(
+        { token: login_token },                // 要更新的字段
+        { where: { account:login_account } }    // 条件
+      );
+    }catch(e){
+      console.log(e)
+    }
 
-    let admin_info = rows[0]
+    let admin_info = AdminContent
     admin_info.password = ""
     admin_info.token = login_token
 
