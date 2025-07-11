@@ -178,5 +178,12 @@ def run_scheduler_for_timepoint(date_str, hour):
     save_schedule_to_db(date_str, hour, actions)
 
 # ---------- 示例入口 ----------
+# patch.py 最后加上这段
 if __name__ == '__main__':
-    run_scheduler_for_timepoint("2025-06-13", 9)
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--date', required=True, help='调度日期，例如 2025-06-13')
+    parser.add_argument('--hour', type=int, required=True, help='小时，例如 9 表示 09:00')
+    args = parser.parse_args()
+
+    run_scheduler_for_timepoint(args.date, args.hour)
