@@ -4,6 +4,7 @@ import Icon from 'ol/style/Icon'
 import Text from 'ol/style/Text'
 import Fill from 'ol/style/Fill'
 
+
 export function getStationStyle(bikeNum = 0) {
   let iconSrc = '/icons/BlueLocationRound.svg'
   if (bikeNum > 10) iconSrc = '/icons/RedLocationRound.svg'

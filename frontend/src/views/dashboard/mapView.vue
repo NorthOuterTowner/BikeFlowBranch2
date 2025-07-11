@@ -1,33 +1,35 @@
 <script setup>
-import { useStationMap } from '@/composables/useStationMap'
 import { ref, onMounted, nextTick, computed } from 'vue'
-import request from '../../api/axios'
 import { useRouter } from 'vue-router'
-import { fromLonLat } from 'ol/proj'
+import { Zoom } from 'ol/control'
 import StationInfo from '../../views/dashboard/stationInfo.vue'
+import request from '../../api/axios'
+import { useStationMap } from '@/composables/useStationMap'
 
 const mapContainer = ref(null)
+const searchQuery = ref('')
 
+// 解构 composable 返回的内容
 const {
   stations,
   stationStatusMap,
+  mapInstance,
   loading,
   initializeMap,
   updateMapDisplay,
   fetchStationLocations,
-  fetchAllStationsStatus
+  fetchAllStationsStatus,
+  handleSearch  // 新增
 } = useStationMap()
 
-// 其他状态
 const welcoming = ref('管理员，欢迎您！')
-const searchQuery = ref('')
 const currentHour = new Date().getHours()
 const selectedHour = ref(currentHour.toString().padStart(2, '0'))
 const selectedStation = ref(null)
 const showStationInfoDialog = ref(false)
 const router = useRouter()
 
-// 固定日期：从 localStorage 取，没有就用今天
+// 固定日期：从 localStorage 获取或取今天
 const fixedDate = computed(() => {
   return localStorage.getItem('selectedDate') || new Date().toISOString().split('T')[0]
 })
@@ -49,77 +51,6 @@ const handleHourChange = async () => {
   updateMapDisplay()
 }
 
-/**
- * 搜索站点功能
- */
- const handleSearch = () => {
-  console.log('搜索按钮被点击，搜索词:', searchQuery.value)
-  
-  if (!searchQuery.value.trim()) {
-    console.log('搜索词为空')
-    alert('请输入搜索内容')
-    return
-  }
-  
-  if (!stations.value || stations.value.length === 0) {
-    console.log('没有站点数据')
-    alert('站点数据未加载')
-    return
-  }
-  
-  if (!mapInstance) {
-    console.log('地图实例未初始化')
-    alert('地图未初始化')
-    return
-  }
-  
-  console.log('开始搜索，当前站点数量:', stations.value.length)
-  
-  const matchedStations = stations.value.filter(station => {
-    const stationName = station.station_name || ''
-    const stationId = station.station_id || ''
-    const searchTerm = searchQuery.value.toLowerCase().trim()
-    
-    return stationName.toLowerCase().includes(searchTerm) ||
-           stationId.toLowerCase().includes(searchTerm)
-  })
-  
-  console.log('匹配到的站点:', matchedStations)
-  
-  if (matchedStations.length > 0) {
-    const station = matchedStations[0]
-    console.log('选中的站点:', station)
-    
-    // 检查坐标是否有效
-    const longitude = parseFloat(station.longitude)
-    const latitude = parseFloat(station.latitude)
-    
-    if (isNaN(longitude) || isNaN(latitude)) {
-      console.error('站点坐标无效:', station)
-      alert('站点坐标数据有误')
-      return
-    }
-    
-    try {
-      mapInstance.getView().animate({
-        center: fromLonLat([longitude, latitude]),
-        zoom: 20,
-        duration: 1000
-      })
-      console.log('地图动画执行成功')
-    } catch (error) {
-      console.error('地图动画执行失败:', error)
-      alert('地图导航失败')
-    }
-  } else {
-    console.log('未找到匹配的站点')
-    alert('未找到相关站点')
-  }
-}
-
-/**
- * 登出功能
- */
 const logout = async () => {
   try {
     await request.post('/api/user/logout')
@@ -130,25 +61,28 @@ const logout = async () => {
   }
 }
 
-/**
- * 初始化
- * 组件挂载时获取站点位置和初始化地图
- */
 onMounted(async () => {
   try {
-    // 等待 DOM 渲染完成
     await nextTick()
-    // 初始化地图
     initializeMap(mapContainer.value, handleStationClick)
-    // 获取站点数据
+
+    // 添加自定义缩放控件
+    const zoomControl = new Zoom({
+      className: 'ol-zoom-custom'
+    })
+    mapInstance.value.addControl(zoomControl)
+
+    // 加载初始数据
     await fetchStationLocations()
-    const predictTime = `${fixedDate}T${selectedHour.value}:00:00Z`
+    const predictTime = `${fixedDate.value}T${selectedHour.value}:00:00Z`
     await fetchAllStationsStatus(predictTime)
+    updateMapDisplay()
   } catch (error) {
     console.error('组件初始化失败:', error)
   }
 })
 </script>
+
 
 <template>
   <div class="app-container">
