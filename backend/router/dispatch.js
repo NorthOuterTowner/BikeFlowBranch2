@@ -19,7 +19,7 @@ const StationInfo = InfoModel(sequelize,DataTypes);
  * 执行调度内容,根据调度内容从调度起点取车，计算调度完成时间，在调度完成后将调度终点增加单车余量
  */
 router.post('/change', authMiddleware, async (req, res) => {
-    let { startStation,endStation,number,dispatchDate, dispatchHour } = req.body
+    let { startStation,endStation,number,dispatchDate, dispatchHour,dispatchId } = req.body
     
     const queryStartsql = "select 1 from `station_real_data` where `station_id` = ? "
     const queryEndSql = "select 1 from `station_real_data` where `station_id` = ? "
@@ -31,7 +31,7 @@ router.post('/change', authMiddleware, async (req, res) => {
         let changeableStock = 0
         const getStockSql = "select `stock` from `station_real_data` where `station_id` = ? and `date` = ? and `hour` = ? "
         let {err:searchErr,rows:searchRows} = await db.async.all(getStockSql,[startStation,dispatchDate,dispatchHour]) 
-
+        console.log(searchRows)
         changeableStock = searchRows[0].stock
 
         if(changeableStock < number){
@@ -40,6 +40,7 @@ router.post('/change', authMiddleware, async (req, res) => {
                 error:"该调度方案不可行，调度数量超过本站点车余量"
             })
         }else{
+          
             const changeSql = "update `station_real_data` set `stock` = `stock` - ? where `station_id` = ? and `date` = ? and `hour` = ?;"
             const changeSql2 = "update `station_real_data` set `stock` = `stock` + ? where `station_id` = ? and `date` = ? and `hour` = ?;"
             
@@ -52,10 +53,20 @@ router.post('/change', authMiddleware, async (req, res) => {
 
             let time = (distance/1000/20)*60*60*1000
 
+            //change status of dispatch
+            const statusSql = "update `station_schedule` set `status` = 1 where `id` = ? ;"
+            await db.async.run(statusSql,[dispatchId])
+
             setTimeout(async()=>{
                 await db.async.run(changeSql2,[number,endStation,dispatchDate,dispatchHour])
             },time)
-            
+
+            dispatchHour+=1;
+            while(dispatchHour<=23){
+              afterTimeSchedule(number,startStation,endStation,dispatchDate,dispatchHour);
+              dispatchHour++;
+            }
+
             res.status(200).send({
                 code:200,
                 msg:"开始进行调度"
@@ -233,5 +244,28 @@ const mapScheduleStatus = (statusInt) => {
 const toYYYYMMDD = (date) => {
     return date.toISOString().slice(0, 10);
 };
+
+/**
+ * 递归进行更改，将调度时间之后的所有时间对应余量均进行更改
+ * @param {*} number 
+ * @param {*} startStation 
+ * @param {*} endStation 
+ * @param {*} dispatchDate 
+ * @param {*} dispatchHour 
+ */
+async function afterTimeSchedule(number,startStation,endStation,dispatchDate,dispatchHour){
+  const changeSql = "update `station_real_data` set `stock` = `stock` - ? where `station_id` = ? and `date` = ? and `hour` = ?;"
+  const changeSql2 = "update `station_real_data` set `stock` = `stock` + ? where `station_id` = ? and `date` = ? and `hour` = ?;"
+  await db.async.run(changeSql,[number,startStation,dispatchDate,dispatchHour])
+  await db.async.run(changeSql2,[number,endStation,dispatchDate,dispatchHour])
+}
+
+
+/**
+ * TO-DO：管理员拒绝该调度请求
+ */
+router.post('/reject',authMiddleware, async (req,res)=>{
+
+})
 
 module.exports = router;
