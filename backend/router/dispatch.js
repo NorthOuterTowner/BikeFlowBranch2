@@ -80,6 +80,8 @@ router.post('/change', authMiddleware, async (req, res) => {
 
             setTimeout(async()=>{
                 await db.async.run(changeSql2,[number,endStation,dispatchDate,dispatchHour])
+                const finishStatusSql = "update `station_schedule` set `status` = 2 where `id` = ?;"
+                await db.async.run(finishStatusSql,[dispatchId])
             },time)
 
             dispatchHour+=1;
