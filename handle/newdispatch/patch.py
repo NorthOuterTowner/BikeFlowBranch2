@@ -6,6 +6,7 @@ import networkx as nx
 from datetime import datetime, timedelta
 from sqlalchemy import create_engine, text
 import numpy as np
+from math import radians, cos, sin, asin, sqrt
 
 # ---------- 配置数据库 ----------
 user = 'zq'
@@ -24,6 +25,31 @@ def load_station_capacities():
     df = pd.read_sql("SELECT station_id, capacity FROM station_info", engine)
     return dict(zip(df['station_id'], df['capacity']))
 
+# ---------- 加载站点经纬度 ----------
+def load_station_locations():
+    df = pd.read_sql("SELECT station_id, lat, lng FROM station_info", engine)
+    return dict(zip(df['station_id'], zip(df['lat'], df['lng'])))
+
+# ---------- 构建所有站点对之间的距离缓存 ----------
+def build_distance_cache(locations):
+    cache = {}
+    R = 6371.0  # 地球半径，单位 km
+
+    station_ids = list(locations.keys())
+    for i, sid1 in enumerate(station_ids):
+        lat1, lon1 = locations[sid1]
+        for sid2 in station_ids:
+            if sid1 == sid2:
+                continue
+            lat2, lon2 = locations[sid2]
+            dlat = radians(lat2 - lat1)
+            dlon = radians(lon2 - lon1)
+            a = sin(dlat / 2)**2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon / 2)**2
+            c = 2 * asin(sqrt(a))
+            distance = R * c
+            cache[(sid1, sid2)] = distance
+    return cache
+
 # ---------- 获取当前库存 ----------
 def get_current_stock(date_str, hour):
     sql = """
@@ -36,22 +62,23 @@ def get_current_stock(date_str, hour):
 
 # ---------- 获取未来 inflow/outflow ----------
 def get_future_flow(start_time, end_time):
-    sql = f"""
+    sql = """
     SELECT station_id, SUM(inflow) AS inflow, SUM(outflow) AS outflow
     FROM station_hourly_status
-    WHERE CONCAT(date, ' ', LPAD(hour, 2, '0'), ':00:00') >= '{start_time}'
-      AND CONCAT(date, ' ', LPAD(hour, 2, '0'), ':00:00') < '{end_time}'
+    WHERE TIMESTAMP(date, SEC_TO_TIME(hour * 3600)) >= :start_time
+      AND TIMESTAMP(date, SEC_TO_TIME(hour * 3600)) < :end_time
     GROUP BY station_id
     """
-    df = pd.read_sql(sql, engine)
+    df = pd.read_sql(text(sql), engine, params={"start_time": start_time, "end_time": end_time})
+    print(f"[调试] 查询 inflow/outflow：时间段 {start_time} ~ {end_time}，共 {len(df)} 行")
     return df
 
-# ---------- 计算距离（可扩展） ----------
-def compute_distance(sid1, sid2):
-    return 1  # 简化为常数，可拓展为地理计算或图计算
+# ---------- 获取站点间距离 ----------
+def compute_distance(sid1, sid2, distance_cache):
+    return distance_cache.get((sid1, sid2), 9999)
 
 # ---------- 生成调度图并求解 ----------
-def plan_dispatch(df, capacities):
+def plan_dispatch(df, capacities, distance_cache):
     G = nx.DiGraph()
     surplus_nodes, shortage_nodes = [], []
 
@@ -107,9 +134,9 @@ def plan_dispatch(df, capacities):
         for to_id, to_qty in new_shortage:
             qty = min(from_qty, to_qty)
             if qty > 0:
-                cost = compute_distance(from_id, to_id)
+                cost = int(compute_distance(from_id, to_id, distance_cache) * 1000)
                 G.add_edge(from_id, to_id, capacity=qty, weight=cost)
-                print(f" → 边：{from_id} ➔ {to_id} 容量={qty} 成本={cost}")
+                print(f" → 边：{from_id} ➔ {to_id} 容量={qty} 成本={cost:.2f} m")
 
     if len(G.edges) == 0:
         print("没有生成任何搬运边，图为空，返回空结果")
@@ -158,7 +185,10 @@ def save_schedule_to_db(date_str, hour, actions):
 # ---------- 主调度函数 ----------
 def run_scheduler_for_timepoint(date_str, hour):
     print(f"\n[开始调度] 时间点：{date_str} {hour:02d} 点")
+
     capacities = load_station_capacities()
+    locations = load_station_locations()
+    distance_cache = build_distance_cache(locations)
     current_stock = get_current_stock(date_str, hour)
 
     start_time = f"{date_str} {str(hour).zfill(2)}:00:00"
@@ -172,18 +202,23 @@ def run_scheduler_for_timepoint(date_str, hour):
         print(f"[警告] 时间段内无数据：{start_time} ~ {end_time}")
         return
 
-    actions = plan_dispatch(df, capacities)
+    actions = plan_dispatch(df, capacities, distance_cache)
 
     print(f"[调度完成] 调度动作数：{len(actions)}")
     save_schedule_to_db(date_str, hour, actions)
 
 # ---------- 示例入口 ----------
-# patch.py 最后加上这段
 if __name__ == '__main__':
+    run_scheduler_for_timepoint("2025-06-13", 9)
+
+# patch.py 最后加上这段
+'''
+if __name__ == '__main__':
+    
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--date', required=True, help='调度日期，例如 2025-06-13')
     parser.add_argument('--hour', type=int, required=True, help='小时，例如 9 表示 09:00')
     args = parser.parse_args()
-
     run_scheduler_for_timepoint(args.date, args.hour)
+'''
