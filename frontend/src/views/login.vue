@@ -1,5 +1,5 @@
 <template>
-  <div class="login-page">
+  <div class="login-page" @keydown.enter="doLogin">
     <n-spin :show="loading">
       <n-card class="login-card" bordered hoverable>
         <h1>BikeFlow</h1>
@@ -31,6 +31,7 @@
   import { login } from '../api/axios' 
   import { useMessageStore } from '../store/messageStore'  // 根据实际路径调整
   import { NInput, NButton, NAlert, NSpin } from 'naive-ui'
+  import { onMounted } from 'vue'
 
   const account = ref('')
   const password = ref('')
@@ -38,9 +39,12 @@
   const messageStore = useMessageStore()
   const loading = ref(false)
   
+  onMounted(() => {
+   messageStore.setMessage('', '')  // 页面加载时清空提示
+  })
+
   async function doLogin() {
     messageStore.setMessage('', '') // 清空提示
-
     try {
       const res = await login(account.value, password.value)
 
@@ -57,9 +61,8 @@
         // 等 1.5 秒后再跳转，让用户看到提示
         setTimeout(() => {
           loading.value = false // 结束加载状态
-          //messageStore.setMessage('', '')
           router.push('/dashboard')
-        }, 1500)
+        }, 1000)
       } else {
         messageStore.setMessage('登录失败: ' + res.data.msg, 'error')
       }
@@ -71,19 +74,7 @@
 </script>
   
 <style scoped>
-.login-page {
-  display: flex;
-  flex-direction: column;
-  align-items: center;      /* 水平居中 */
-  justify-content: center;  /* 垂直居中 */
-  height: 100vh;
-  max-width: 300px;
-  width: 90%;              /* 小屏幕时也好看 */
-  margin: 0 auto;
-  text-align: center;
-  padding: 0 16px;  
-  /* background: linear-gradient(135deg, #ffffff, #0556a7); */
-}
+
 .login-card {
   width: 100%;
   width: 400px;
@@ -124,6 +115,46 @@ h1 {
 }
 :deep(.n-input__input) {
   text-align: left;
+}
+
+.login-page {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;      
+  justify-content: center;  
+  height: 100vh;
+  /* max-width: 300px; */
+  width: 90%;              
+  margin: 0 auto;
+  text-align: center;
+  padding: 0 16px;  
+  z-index: 1;
+  overflow: hidden;
+}
+
+.login-page::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-image: url('../../public/background.png'); /* public 目录下 */
+  background-size: cover;
+  background-position: center;
+  opacity: 0.4; /* 控制背景透明度 */
+  z-index: -2;
+}
+
+/* 白色渐变边缘遮罩层 */
+.login-page::after {
+  content: "";
+  position: absolute;
+  top: 0; left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: radial-gradient(circle, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0.8) 80%, rgba(255,255,255,1) 100%);
+  z-index: -1;
 }
 
 </style>

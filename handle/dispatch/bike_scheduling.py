@@ -295,6 +295,9 @@ def print_schedule_summary(schedule_df, date, hour):
     logger.info(f"\n调度选项 - {date} {hour}:00:")
     valid_count = len(df[df['schedule_action'].apply(lambda x: json.loads(x).get('bikes', 0) > 0 if isinstance(x, str) else x.get('bikes', 0) > 0)])
     logger.info(f"有效调度记录数: {valid_count}")
+    if not schedule_df.empty:
+        logger.info("调度详情（前10条）:")
+        logger.info(schedule_df[['from_station', 'to_station', 'bikes', 'datetime']].head(10).to_string(index=False))
     for _, row in df.iterrows():
         action = json.loads(row['schedule_action']) if isinstance(row['schedule_action'], str) else row['schedule_action']
         if action.get('bikes', 0) > 0:

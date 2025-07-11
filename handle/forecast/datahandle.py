@@ -1,3 +1,6 @@
+'''
+初始数据整合
+'''
 import sys
 sys.stdout.reconfigure(encoding='utf-8')
 import pymysql
