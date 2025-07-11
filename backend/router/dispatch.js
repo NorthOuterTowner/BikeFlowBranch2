@@ -15,8 +15,29 @@ const StationSchedule = ScheduleModel(sequelize,DataTypes);
 const StationInfo = InfoModel(sequelize,DataTypes);
 
 /**
- * 执行调度：
- * 执行调度内容,根据调度内容从调度起点取车，计算调度完成时间，在调度完成后将调度终点增加单车余量
+ * @api {post} /change 执行调度
+ * @apiDescription 根据调度内容从起点站取车，计算调度完成时间，并在调度完成后将终点站单车余量增加。
+ *
+ * @apiHeader {String} Authorization 用户登录令牌，需通过authMiddleware验证。
+ *
+ * @apiParam {String} startStation 调度起点站ID。
+ * @apiParam {String} endStation 调度终点站ID。
+ * @apiParam {Number} number 调度车辆数量。
+ * @apiParam {String} dispatchDate 调度日期，格式 YYYY-MM-DD。
+ * @apiParam {Number} dispatchHour 调度小时，0-23。
+ * @apiParam {String} dispatchId 调度记录ID。
+ *
+ * @apiSuccess {Number} code 状态码，200表示调度已开始。
+ * @apiSuccess {String} msg 返回提示信息，"开始进行调度"。
+ *
+ * @apiError (400) {Number} code 400
+ * @apiError (400) {String} error 错误信息，如"无效站点"。
+ *
+ * @apiError (422) {Number} code 422
+ * @apiError (422) {String} error 调度方案不可行，如"调度数量超过本站点车余量"。
+ *
+ * @apiError (500) {Number} code 500
+ * @apiError (500) {String} error 服务器错误提示，如"调度失败"。
  */
 router.post('/change', authMiddleware, async (req, res) => {
     let { startStation,endStation,number,dispatchDate, dispatchHour,dispatchId } = req.body
@@ -262,23 +283,59 @@ async function afterTimeSchedule(number,startStation,endStation,dispatchDate,dis
 
 
 /**
- * TO-DO：管理员拒绝该调度请求
+ * @api {post} /reject 管理员拒绝该调度请求
+ * @apiDescription 管理员通过调度ID拒绝该调度请求，只有状态为0（未使用）的调度可以被拒绝，拒绝后状态变为-1。
+ *
+ * @apiHeader {String} Authorization 用户登录令牌，需通过authMiddleware验证。
+ *
+ * @apiParam {String} id 调度ID，必须。
+ *
+ * @apiSuccess {Number} code 状态码，200表示成功。
+ * @apiSuccess {String} msg 返回提示信息，"已拒绝该调度"。
+ *
+ * @apiError (400) {Number} code 400
+ * @apiError (400) {String} err 错误信息，可能为"参数id不能为空"或"该调度已使用"。
+ *
+ * @apiError (404) {Number} code 404
+ * @apiError (404) {String} err 错误信息，调度不存在。
+ *
+ * @apiError (500) {Number} code 500
+ * @apiError (500) {String} msg "服务器错误"
+ * @apiError (500) {String} err 具体错误信息。
  */
 router.post('/reject',authMiddleware, async (req,res)=>{
   let {id} = req.body;
-  try{
-    const statusSql = " update `station_schedule` set `status` = -1 where `id` = ?;"
-    await db.async.run(statusSql,[id])
-    res.status(200).send({
-      code:200,
-      msg:"已拒绝该调度"
-    })
-  }catch(err){
-    res.status(200).send({
-      code:500,
-      msg:"服务器错误",
-      err
-    })
+
+  if (!id) {
+    return res.status(400).send({
+      code: 400,
+      err: "参数id不能为空"
+    });
+  }
+
+  const trySql = " select `status` from `station_schedule` where `id` = ? ;"
+  let {err,rows} = await db.async.all(trySql,[id])
+  console.log(rows[0].status)
+  if(rows[0].status != 0){
+    return res.status(400).send({
+      code:400,
+      err:"该调度已使用"
+    });
+  }else{
+    try{
+      const statusSql = " update `station_schedule` set `status` = -1 where `id` = ?;"
+      await db.async.run(statusSql,[id])
+      res.status(200).send({
+        code:200,
+        msg:"已拒绝该调度"
+      })
+    }catch(err){
+      res.status(200).send({
+        code:500,
+        msg:"服务器错误",
+        err
+      })
+    }
   }
 })
 
