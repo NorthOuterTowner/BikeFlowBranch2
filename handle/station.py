@@ -13,7 +13,8 @@ cursor.execute("""
 CREATE TABLE IF NOT EXISTS station_info (
     station_id VARCHAR(20) PRIMARY KEY,
     lat FLOAT,
-    lng FLOAT
+    lng FLOAT,
+    station_name VARCHAR(100)
 )
 """)
 
@@ -27,17 +28,17 @@ def is_valid_station_id(s):
 
 # 从 bike_trip 表提取起点站点信息并过滤合法站点
 df = pd.read_sql("""
-    SELECT DISTINCT start_station_id AS station_id, start_lat AS lat, start_lng AS lng
+    SELECT DISTINCT start_station_id AS station_id, start_lat AS lat, start_lng AS lng,start_station_name as station_name
     FROM bike_trip
-    WHERE start_station_id IS NOT NULL AND start_lat IS NOT NULL AND start_lng IS NOT NULL
+    WHERE start_station_id IS NOT NULL AND start_lat IS NOT NULL AND start_lng IS NOT NULL AND start_station_name IS NOT NULL
 """, conn)
 df = df[df['station_id'].apply(is_valid_station_id)]
 
 # 也加入终点站点信息，过滤合法站点
 df_end = pd.read_sql("""
-    SELECT DISTINCT end_station_id AS station_id, end_lat AS lat, end_lng AS lng
+    SELECT DISTINCT end_station_id AS station_id, end_lat AS lat, end_lng AS lng,end_station_name AS station_name
     FROM bike_trip
-    WHERE end_station_id IS NOT NULL AND end_lat IS NOT NULL AND end_lng IS NOT NULL
+    WHERE end_station_id IS NOT NULL AND end_lat IS NOT NULL AND end_lng IS NOT NULL AND end_station_name IS NOT NULL
 """, conn)
 df_end = df_end[df_end['station_id'].apply(is_valid_station_id)]
 
@@ -48,10 +49,10 @@ df_all = pd.concat([df, df_end]).drop_duplicates(subset='station_id').reset_inde
 cursor.execute("DELETE FROM station_info")  # 清空旧数据（可选）
 for row in df_all.itertuples(index=False):
     cursor.execute("""
-        INSERT INTO station_info (station_id, lat, lng)
-        VALUES (%s, %s, %s)
+        INSERT INTO station_info (station_id, lat, lng,station_name)
+        VALUES (%s, %s, %s,%s)
         ON DUPLICATE KEY UPDATE lat=VALUES(lat), lng=VALUES(lng)
-    """, (row.station_id, row.lat, row.lng))
+    """, (row.station_id, row.lat, row.lng,row.station_name))
 
 conn.commit()
 cursor.close()
