@@ -87,18 +87,7 @@
   </script>
   
   <style scoped>
-.register-page {
-  display: flex;
-  flex-direction: column;
-  align-items: center;      /* 水平居中 */
-  justify-content: center;  /* 垂直居中 */
-  height: 100vh;
-  max-width: 300px;
-  width: 90%;              /* 小屏幕时也好看 */
-  margin: 0 auto;
-  text-align: center;
-  padding: 0 16px;  
-}
+
 .register-card {
   width: 100%;
   width: 400px;
@@ -147,4 +136,45 @@ h1 {
 :deep(.n-input__input) {
   text-align: left;
 }
+
+.register-page {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;      
+  justify-content: center;  
+  height: 100vh;
+  /* max-width: 300px; */
+  width: 90%;              
+  margin: 0 auto;
+  text-align: center;
+  padding: 0 16px;  
+  z-index: 1;
+  overflow: hidden;
+}
+
+.register-page::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-image: url('../../public/background.png'); /* public 目录下 */
+  background-size: cover;
+  background-position: center;
+  opacity: 0.4; /* 控制背景透明度 */
+  z-index: -2;
+}
+
+/* 白色渐变边缘遮罩层 */
+.register-page::after {
+  content: "";
+  position: absolute;
+  top: 0; left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: radial-gradient(circle, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0.8) 80%, rgba(255,255,255,1) 100%);
+  z-index: -1;
+}
+
 </style>

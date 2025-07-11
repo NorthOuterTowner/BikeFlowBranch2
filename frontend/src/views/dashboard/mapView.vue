@@ -53,22 +53,69 @@ const handleHourChange = async () => {
  * 搜索站点功能
  */
  const handleSearch = () => {
-  if (!searchQuery.value.trim()) return
-  const matchedStations = stations.value.filter(station =>
-    station.station_name.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-    station.station_id.toLowerCase().includes(searchQuery.value.toLowerCase())
-  )
+  console.log('搜索按钮被点击，搜索词:', searchQuery.value)
+  
+  if (!searchQuery.value.trim()) {
+    console.log('搜索词为空')
+    alert('请输入搜索内容')
+    return
+  }
+  
+  if (!stations.value || stations.value.length === 0) {
+    console.log('没有站点数据')
+    alert('站点数据未加载')
+    return
+  }
+  
+  if (!mapInstance) {
+    console.log('地图实例未初始化')
+    alert('地图未初始化')
+    return
+  }
+  
+  console.log('开始搜索，当前站点数量:', stations.value.length)
+  
+  const matchedStations = stations.value.filter(station => {
+    const stationName = station.station_name || ''
+    const stationId = station.station_id || ''
+    const searchTerm = searchQuery.value.toLowerCase().trim()
+    
+    return stationName.toLowerCase().includes(searchTerm) ||
+           stationId.toLowerCase().includes(searchTerm)
+  })
+  
+  console.log('匹配到的站点:', matchedStations)
+  
   if (matchedStations.length > 0) {
     const station = matchedStations[0]
-    mapInstance.getView().animate({
-      center: fromLonLat([station.longitude, station.latitude]),
-      zoom: 15,
-      duration: 1000
-    })
+    console.log('选中的站点:', station)
+    
+    // 检查坐标是否有效
+    const longitude = parseFloat(station.longitude)
+    const latitude = parseFloat(station.latitude)
+    
+    if (isNaN(longitude) || isNaN(latitude)) {
+      console.error('站点坐标无效:', station)
+      alert('站点坐标数据有误')
+      return
+    }
+    
+    try {
+      mapInstance.getView().animate({
+        center: fromLonLat([longitude, latitude]),
+        zoom: 20,
+        duration: 1000
+      })
+      console.log('地图动画执行成功')
+    } catch (error) {
+      console.error('地图动画执行失败:', error)
+      alert('地图导航失败')
+    }
   } else {
+    console.log('未找到匹配的站点')
     alert('未找到相关站点')
   }
- }
+}
 
 /**
  * 登出功能
@@ -400,36 +447,33 @@ onMounted(async () => {
 }
 
 /* OpenLayers 样式覆盖 */
-.map-container :deep(.ol-zoom) {
+
+.map-container :deep(.ol-zoom-custom) {
   position: absolute;
-  top: 0.5em;
-  left: 0.5em;
-  background: rgba(255,255,255,.4);
-  border-radius: 4px;
-  padding: 2px;
+  bottom: 20px;
+  right: 20px;
+  z-index: 1000;
 }
 
-.map-container :deep(.ol-zoom button) {
-  display: block;
-  margin: 1px;
-  padding: 0;
-  color: white;
-  font-size: 1.14em;
-  font-weight: 700;
-  text-decoration: none;
-  text-align: center;
-  height: 1.375em;
-  width: 1.375em;
-  background-color: rgba(0,60,136,.5);
+.map-container :deep(.ol-zoom-custom button) {
+  width: 60px;
+  height: 60px;
+  font-size: 24px;
+  background-color: rgba(255, 255, 255, 0.95);
   border: none;
-  border-radius: 2px;
+  border-radius: 8px;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  transition: background-color 0.2s;
 }
 
-.map-container :deep(.ol-zoom button:hover) {
-  background-color: rgba(0,60,136,.7);
+.map-container :deep(.ol-zoom-custom button:hover) {
+  background-color: #f0f0f0;
 }
-
 .map-container :deep(.ol-zoom button:focus) {
   background-color: rgba(0,60,136,.7);
 }

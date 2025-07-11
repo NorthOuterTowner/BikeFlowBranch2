@@ -1,6 +1,4 @@
-const { DataTypes } = require('sequelize');
-
-module.exports = (sequelize) => {
+module.exports = (sequelize,DataTypes) => {
   const StationHourlyFlow = sequelize.define('StationHourlyFlow', {
     id: {
       type: DataTypes.INTEGER(11),
