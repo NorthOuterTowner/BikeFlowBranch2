@@ -143,6 +143,14 @@ function calcLength(lat1, lng1, lat2, lng2) {
   return Math.round(R * c);
 }
 
+/**
+ * 递归进行更改，将调度时间之后的所有时间对应余量均进行更改
+ * @param {*} number 
+ * @param {*} startStation 
+ * @param {*} endStation 
+ * @param {*} dispatchDate 
+ * @param {*} dispatchHour 
+ */
 async function afterTimeSchedule(number,startStation,endStation,dispatchDate,dispatchHour){
   const changeSql = "update `station_real_data` set `stock` = `stock` - ? where `station_id` = ? and `date` = ? and `hour` = ?;"
   const changeSql2 = "update `station_real_data` set `stock` = `stock` + ? where `station_id` = ? and `date` = ? and `hour` = ?;"
@@ -152,7 +160,7 @@ async function afterTimeSchedule(number,startStation,endStation,dispatchDate,dis
 
 
 /**
- * TO-DO
+ * TO-DO：管理员拒绝该调度请求
  */
 router.post('/reject',authMiddleware, async (req,res)=>{
 
