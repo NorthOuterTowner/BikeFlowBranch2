@@ -119,7 +119,6 @@ async function fetchStationLocations() {
 //     loading.value = false
 //   }
 // }
-
 /**
  * 获取指定时间所有站点的单车数量和流量
  * @param predictTime 预测时间，格式为 'HH:mm:ss'(疑似)
@@ -127,25 +126,41 @@ async function fetchStationLocations() {
 async function fetchAllStationsStatus(predictTime) {
   try {
     loading.value = true
+    
+    // 在请求前先清空现有数据，避免显示旧数据
+    stationStatusMap.value = {}
+    
     const res = await request.get('/predict/stations/all', {
       params: { predict_time: predictTime }
     })
-    // 转成 { station_id: { stock, inflow, outflow } }
-    const newMap = {}
-    res.data.stations_status.forEach(item => {
-      newMap[item.station_id] = {
-        stock: item.stock,
-        inflow: item.inflow,
-        outflow: item.outflow
-      }
-    })
-    stationStatusMap.value = newMap
-    console.log('站点状态:', stationStatusMap.value)
+    
+    // 检查响应数据是否存在且有效
+    if (res.data && res.data.stations_status && Array.isArray(res.data.stations_status)) {
+      // 转成 { station_id: { stock, inflow, outflow } }
+      const newMap = {}
+      res.data.stations_status.forEach(item => {
+        newMap[item.station_id] = {
+          stock: item.stock || 0,
+          inflow: item.inflow || 0,
+          outflow: item.outflow || 0
+        }
+      })
+      stationStatusMap.value = newMap
+      console.log('站点状态:', stationStatusMap.value)
+    } else {
+      // 如果没有有效数据，确保 stationStatusMap 为空
+      console.warn('没有获取到有效的站点状态数据')
+      stationStatusMap.value = {}
+    }
+    
     updateMapDisplay()
-      } catch (error) {
-    console.error('获取所有站点状态失败:', error.response || error.message ||error)
+  } catch (error) {
+    console.error('获取所有站点状态失败:', error.response || error.message || error)
     console.log('请求地址:', '/predict/stations/all', '参数:', predictTime)
-
+    
+    // 出错时也要清空数据，避免显示错误的旧数据
+    stationStatusMap.value = {}
+    updateMapDisplay()
   } finally {
     loading.value = false
   }
@@ -298,6 +313,7 @@ onMounted(async () => {
   } catch (error) {
     console.error('组件初始化失败:', error)
   }
+  
 })
 
 </script>
@@ -442,24 +458,25 @@ onMounted(async () => {
 .user-info {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: flex-end;
   margin-left: 20px;
-  gap: 20px;
-  flex-shrink: 0; 
+  gap: 15px;
+  flex-shrink: 0;
 }
 
 .user-top {
   display: flex;
   align-items: center;
-  gap: 150px;
+  gap: 20px;
 }
 
 .welcoming {
   font-size: 14px;
-  white-space: nowrap; 
+  white-space: nowrap;
+  color: #495057;
 }
 
-.logout-button, .search-button {
+.logout-button{
   padding: 6px 12px;
   background-color: #091275;
   color: white;
@@ -470,7 +487,22 @@ onMounted(async () => {
   transition: background-color 0.2s;
 }
 
-.logout-button:hover, .search-button:hover {
+.logout-button:hover {
+  background-color: #0a1580;
+}
+
+.search-button {
+  padding: 6px 12px;
+  background-color: #091275;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.2s;
+}
+
+.search-button:hover {
   background-color: #0a1580;
 }
 
@@ -480,9 +512,17 @@ onMounted(async () => {
   gap: 8px;
 }
 
+.right-time label {
+  font-size: 14px;
+  color: #495057;
+  white-space: nowrap;
+}
+
+
 .right-time .fixed-date {
   margin-right: 20px;
   font-weight: bold;
+  color: #091275;
 }
 
 .right-time select {

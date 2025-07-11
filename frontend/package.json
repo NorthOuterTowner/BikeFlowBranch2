@@ -9,9 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@types/cesium": "^1.67.14",
     "axios": "^1.10.0",
-    "cesium": "^1.131.0",
     "naive-ui": "^2.42.0",
     "ol": "^10.6.1",
     "pinia": "^3.0.3",
