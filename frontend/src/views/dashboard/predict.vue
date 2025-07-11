@@ -149,147 +149,87 @@ function updateHeatmapWithBlur() {
     return
   }
 
-  // 计算统计信息
   calculateDifferenceStats()
 
-  // 创建预测数据映射
   const predictionMap = new Map()
   predictionData.value.forEach(item => {
     predictionMap.set(item.station_id, item)
   })
 
-  // 移除旧图层
+  // 清理旧图层
   if (heatmapLayer) {
     mapInstance.removeLayer(heatmapLayer)
   }
-  if (window.outflowLayer) {
-    mapInstance.removeLayer(window.outflowLayer)
-  }
-  if (window.neutralLayer) {
-    mapInstance.removeLayer(window.neutralLayer)
-  }
 
-  // 分别创建流入、流出和中性的热力图层
-  const inflowSource = new VectorSource()
-  const outflowSource = new VectorSource()
-  const neutralSource = new VectorSource()
+  const heatmapSource = new VectorSource()
 
-  // 创建要素
+  const maxAbsDifference = Math.max(differenceStats.value.maxInflow, differenceStats.value.maxOutflow)
+
   stations.value.forEach(station => {
     const prediction = predictionMap.get(station.station_id)
     if (!prediction) return
 
     const difference = prediction.inflow - prediction.outflow
-    
-    if (difference > 0) {
-      // 流入点
-      const feature = new Feature({
-        geometry: new Point(fromLonLat([
-          parseFloat(station.longitude), 
-          parseFloat(station.latitude)
-        ]))
-      })
-      
-      const weight = Math.min(difference / differenceStats.value.maxInflow, 1)
-      feature.set('weight', weight)
-      feature.set('stationData', { ...station, ...prediction })
-      inflowSource.addFeature(feature)
-    } else if (difference < 0) {
-      // 流出点
-      const feature = new Feature({
-        geometry: new Point(fromLonLat([
-          parseFloat(station.longitude), 
-          parseFloat(station.latitude)
-        ]))
-      })
-      
-      const weight = Math.min(Math.abs(difference) / differenceStats.value.maxOutflow, 1)
-      feature.set('weight', weight)
-      feature.set('stationData', { ...station, ...prediction })
-      outflowSource.addFeature(feature)
-    } else {
-      // 差值为0的点（中性）
-      const feature = new Feature({
-        geometry: new Point(fromLonLat([
-          parseFloat(station.longitude), 
-          parseFloat(station.latitude)
-        ]))
-      })
-      
-      // 中性点使用固定权重
-      feature.set('weight', 0.9)
-      feature.set('stationData', { ...station, ...prediction })
-      neutralSource.addFeature(feature)
-    }
+    const normalized = difference / maxAbsDifference // -1 到 1
+
+    const feature = new Feature({
+      geometry: new Point(fromLonLat([
+        parseFloat(station.longitude),
+        parseFloat(station.latitude)
+      ]))
+    })
+
+    // 映射到 0~1，0 代表最大流出，0.5 代表中性，1 代表最大流入
+  const heatmapWeight = Math.pow((normalized + 1) / 2, 0.5)  // 开根号，放大低权重区颜色
+
+
+    feature.set('weight', heatmapWeight)
+    feature.set('stationData', { ...station, ...prediction })
+    stations.value.forEach(station => {
+  const prediction = predictionMap.get(station.station_id)
+  if (!prediction) return
+
+  const difference = prediction.inflow - prediction.outflow
+  const normalized = difference / maxAbsDifference
+  const weight = (normalized + 1) / 2
+
+  console.log(`站点 ${station.station_id}：差值=${difference}, 归一化=${normalized.toFixed(2)}, 权重=${weight.toFixed(2)}`)
+})
+
+    heatmapSource.addFeature(feature)
   })
 
-  // 创建流入热力图层 - 红色 (zIndex: 2)
-  const inflowLayer = new HeatmapLayer({
-    source: inflowSource,
-    blur: 20,
-    radius: 25,
-    weight: function(feature) {
-      return feature.get('weight') || 0
-    },
+  heatmapLayer = new HeatmapLayer({
+    source: heatmapSource,
+    blur: 50,
+    radius: 50,
+    weight: feature => feature.get('weight') || 0,
     gradient: [
-      'rgba(255, 0, 0, 0)',
-      'rgba(255, 50, 0, 0.3)',
-      'rgba(255, 100, 0, 0.5)',
-      'rgba(255, 150, 0, 0.7)',
-      'rgba(255, 200, 0, 0.8)',
-      'rgba(255, 0, 0, 0.9)'
+      'rgba(0, 0, 100, 1)',      // 更深蓝黑
+      'rgba(0, 0, 139, 1)',      // 深蓝
+      'rgba(0, 0, 180, 1)',      // 深蓝偏亮
+      'rgba(0, 0, 220, 1)',      // 更亮蓝
+      'rgba(0, 0, 255, 1)',      // 纯蓝
+      'rgba(0, 64, 255, 1)',     // 蓝带点青
+      'rgba(0, 128, 255, 1)',    // 蓝青
+      'rgba(0, 192, 255, 1)',    // 浅蓝青
+      'rgba(0, 255, 255, 1)',    // 青色
+      'rgba(0, 255, 128, 1)',    // 青绿
+      'rgba(0, 255, 0, 1)',      // 绿色（最显眼）
+      'rgba(173, 255, 47, 1)',   // 黄绿色
+      'rgba(255, 255, 0, 1)',    // 黄色（中性）
+      'rgba(255, 165, 0, 1)',    // 橙色
+      'rgba(255, 0, 0, 0.7)',      // 红色（最大）
     ]
+
+
+
   })
-  inflowLayer.setZIndex(2)
 
-  // 创建流出热力图层 - 蓝色 (zIndex: 2)
-  const outflowLayer = new HeatmapLayer({
-    source: outflowSource,
-    blur: 20,
-    radius: 25,
-    weight: function(feature) {
-      return feature.get('weight') || 0
-    },
-    gradient: [
-      'rgba(0, 100, 255, 0)',
-      'rgba(0, 120, 255, 0.3)',
-      'rgba(0, 150, 255, 0.5)',
-      'rgba(0, 180, 255, 0.7)',
-      'rgba(0, 200, 255, 0.8)',
-      'rgba(0, 100, 255, 0.9)'
-    ]
-  })
-  outflowLayer.setZIndex(2)
-
-  // 创建中性热力图层 - 黄色 (zIndex: 1, 最低优先级)
-  const neutralLayer = new HeatmapLayer({
-    source: neutralSource,
-    blur: 15,
-    radius: 20,
-    weight: function(feature) {
-      return feature.get('weight') || 0
-    },
-    gradient: [
-      'rgba(255, 255, 0, 0)',
-      'rgba(255, 255, 50, 0.4)',
-      'rgba(255, 255, 100, 0.6)',
-      'rgba(255, 255, 150, 0.8)',
-      'rgba(255, 255, 200, 0.9)',
-      'rgba(255, 255, 0, 1)'
-    ]
-  })
-  neutralLayer.setZIndex(2)
-
-  mapInstance.addLayer(neutralLayer)
-  mapInstance.addLayer(inflowLayer)
-  mapInstance.addLayer(outflowLayer)
-
-  
-  // 保存引用（用于后续清理）
-  heatmapLayer = inflowLayer
-  window.outflowLayer = outflowLayer
-  window.neutralLayer = neutralLayer
+  heatmapLayer.setZIndex(2)
+  mapInstance.addLayer(heatmapLayer)
 }
+
 
 const handleTimeChange = async () => {
   const predictTime = `${selectedDate.value}T${selectedHour.value}:00:00Z`
@@ -320,7 +260,7 @@ onMounted(async () => {
     layers: [new TileLayer({ source: new OSM() })],
     view: new View({
       center: fromLonLat([-74.0576, 40.7312]),
-      zoom: 11,
+      zoom: 14,
       maxZoom: 20,
       minZoom: 3
     }),

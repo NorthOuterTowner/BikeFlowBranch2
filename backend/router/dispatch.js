@@ -341,4 +341,100 @@ router.post('/reject',authMiddleware, async (req,res)=>{
   }
 })
 
+/**
+ * @api {get} /api/v1/schedules/by-station 按站点和时间查询调度任务
+ * @apiDescription 查询特定站点在指定时间所属的3小时周期内的所有相关任务。
+ * @apiParam {String} station_id 站点的ID。
+ * @apiParam {String} query_time ISO 8601 格式的查询时间。
+ * @apiParam {String} [role] 可选, 站点的角色 ('start' 或 'end')。
+ */
+router.get('/by-station', async (req, res) => {
+    const { station_id, query_time, role } = req.query;
+
+    // 1. 参数校验
+    if (!station_id || !query_time) {
+        return res.status(400).json({ error: 'Missing required parameters: station_id and query_time.' });
+    }
+    if (role && !['start', 'end'].includes(role)) {
+        return res.status(400).json({ error: "Invalid role parameter. Allowed values are 'start' or 'end'." });
+    }
+
+    try {
+        const queryDate = new Date(query_time);
+        if (isNaN(queryDate.getTime())) {
+            return res.status(400).json({ error: 'Invalid query_time format. Please use ISO 8601 format.' });
+        }
+
+        // (可选但推荐) 校验站点是否存在
+        const stationExists = await StationInfo.findByPk(station_id);
+        if (!stationExists) {
+            return res.status(404).json({ error: `Station with ID ${station_id} not found.` });
+        }
+
+        // 2. 动态构建查询条件 (合并时间和站点逻辑)
+        const dateForQuery = toYYYYMMDD(queryDate);
+        const originalHour = queryDate.getUTCHours();
+        const hourForQuery = Math.floor(originalHour / 3) * 3;
+
+        let whereClause = {
+            date: dateForQuery,
+            hour: hourForQuery
+        };
+
+        if (role === 'start') {
+            whereClause.start_id = station_id;
+        } else if (role === 'end') {
+            whereClause.end_id = station_id;
+        } else {
+            whereClause[Op.or] = [
+                { start_id: station_id },
+                { end_id: station_id }
+            ];
+        }
+
+        // 3. 执行查询
+        const schedules = await StationSchedule.findAll({
+            where: whereClause,
+            include: [
+                { model: StationInfo, as: 'startStation', attributes: ['station_id', 'station_name', 'lat', 'lng'] },
+                { model: StationInfo, as: 'endStation', attributes: ['station_id', 'station_name', 'lat', 'lng'] }
+            ],
+            order: [['id', 'ASC']],
+            attributes: { exclude: ['start_id', 'end_id'] }
+        });
+
+        // 4. 格式化响应
+        const formattedSchedules = schedules.map(schedule => ({
+            schedule_id: schedule.id,
+            bikes_to_move: schedule.bikes,
+            status: mapScheduleStatus(schedule.status),
+            start_station: schedule.startStation ? {
+                id: schedule.startStation.station_id,
+                name: schedule.startStation.station_name,
+                lat: schedule.startStation.lat,
+                lng: schedule.startStation.lng
+            } : null,
+            end_station: schedule.endStation ? {
+                id: schedule.endStation.station_id,
+                name: schedule.endStation.station_name,
+                lat: schedule.endStation.lat,
+                lng: schedule.endStation.lng
+            } : null,
+            updated_at: schedule.updated_at
+        }));
+
+        res.json({
+            lookup_date: dateForQuery,
+            lookup_hour: hourForQuery,
+            station_id: station_id,
+            role_filter: role || 'all',
+            schedules: formattedSchedules
+        });
+
+    } catch (err) {
+        console.error('Schedule by Station & Time Lookup API Error:', err);
+        res.status(500).json({ error: 'An internal server error occurred.' });
+    }
+});
+
 module.exports = router;
