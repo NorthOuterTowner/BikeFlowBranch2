@@ -13,7 +13,8 @@ module.exports = (sequelize, DataTypes) => {
     }
   }, {
     tableName: 'station_info',
-    freezeTableName: true
+    freezeTableName: true,
+        timestamps: false
   });
 
   return Station;
