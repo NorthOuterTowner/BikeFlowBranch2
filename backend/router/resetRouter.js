@@ -12,6 +12,9 @@ const authMiddleware = require("../utils/auth")
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/**
+ * 重置用户名
+ */
 router.post('/account',authMiddleware,async (req, res) => {
     let {oldName,newName} = req.body
     const sql = 'select count(*) as cnt from `admin` where `account` = ?'
@@ -40,6 +43,10 @@ router.post('/account',authMiddleware,async (req, res) => {
     }
 });
 
+/**
+ * 重置密码：
+ * 通过邮件进行验证确认用户身份，验证逻辑与注册过程相同
+ */
 router.post('/pwd', authMiddleware, async (req, res) => {
   const { email, newPassword } = req.body;
 
