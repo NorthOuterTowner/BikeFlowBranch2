@@ -257,6 +257,7 @@ predict_time	String	查询的时间点，ISO 8601格式。	2025-01-22T17:10:00Z
 ```
 5. 执行调度过程
 （1）执行调度过程（POST）
+执行调度后status设置为1
 ```bash
 /dispatch/change
 ```
@@ -275,6 +276,24 @@ predict_time	String	查询的时间点，ISO 8601格式。	2025-01-22T17:10:00Z
 {
   "code": 200, //状态码
   "msg": "调度成功"
+}
+```
+（2）拒绝调度（POST）
+拒绝调度将会将status设置为-1
+```bash
+/dispatch/reject
+```
+请求格式
+```bash
+{
+  "id":36
+}
+```
+返回格式
+```bash
+{
+    "code": 200,
+    "msg": "已拒绝该调度"
 }
 ```
 6. 返回调度信息

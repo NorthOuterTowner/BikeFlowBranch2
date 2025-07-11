@@ -44,8 +44,25 @@ router.post('/account',authMiddleware,async (req, res) => {
 });
 
 /**
- * 重置密码：
- * 通过邮件进行验证确认用户身份，验证逻辑与注册过程相同
+ * @api {post} /pwd 重置密码
+ * @apiDescription 通过邮箱发送重置密码验证码，验证逻辑与注册过程相同。
+ * @apiHeader {String} Authorization 用户登录令牌，需通过authMiddleware验证。
+ * 
+ * @apiParam {String} email 用户注册邮箱。
+ * @apiParam {String} newPassword 新密码（明文，服务端将进行哈希处理）。
+ *
+ * @apiSuccess {Number} code 200
+ * @apiSuccess {String} msg "重置验证邮件已发送，请查收邮箱"
+ *
+ * @apiError (400) {Number} code 400
+ * @apiError (400) {String} msg "邮箱和新密码不能为空" 或 "邮箱格式不合法"
+ *
+ * @apiError (404) {Number} code 404
+ * @apiError (404) {String} msg "该邮箱未注册"
+ *
+ * @apiError (500) {Number} code 500
+ * @apiError (500) {String} msg "服务器内部错误"
+ * @apiError (500) {String} error 具体错误信息
  */
 router.post('/pwd', authMiddleware, async (req, res) => {
   const { email, newPassword } = req.body;
@@ -143,6 +160,21 @@ router.post('/pwd', authMiddleware, async (req, res) => {
   }
 });
 
+/**
+ * @api {get} /verify 验证重置密码链接
+ * @apiDescription 用户点击邮件中的链接完成密码重置，链接有效期30分钟。
+ *
+ * @apiParam {String} code 邮件中的验证码。
+ *
+ * @apiSuccess {Number} code 200
+ * @apiSuccess {String} msg "密码重置成功"
+ *
+ * @apiError (400/404) {String} msg "链接无效或已过期！"
+ *
+ * @apiError (500) {Number} code 500
+ * @apiError (500) {String} msg "重置失败"
+ * @apiError (500) {String} error 具体错误信息
+ */
 router.get('/verify', async (req, res) => {
   const { code } = req.query;
 

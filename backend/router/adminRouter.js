@@ -8,18 +8,38 @@ const nodemailer = require("nodemailer");
 const redis = require("redis")
 const redisClient = require("../db/redis");
 
-const sequelize = require('../orm/sequelize'); // 确保路径正确
+const sequelize = require('../orm/sequelize');
 const { DataTypes } = require('sequelize')
 const AdminModel = require('../orm/models/Admin');
 const Admin = AdminModel(sequelize,DataTypes)
 const { Op } = require('sequelize');
+const { register } = require('module');
+
+const ejs = require('ejs');
+const path = require('path');
+const templatePath = path.join(__dirname, '../views/emailTemplate.ejs');
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
- * 登录功能：
- * 输入用户名和密码即可，该接口返回token，前端应使用工具记录以验证登录状态
+ * @api {post} /api/v1/admin/login 登录账号
+ * @apiName AdminLogin
+ * @apiGroup Admin
+ * @apiDescription 使用账号和密码登录，成功后返回 token 和账户信息，前端应保存 token 以维持登录状态。
+ *
+ * @apiParam {String} account 管理员账号（唯一标识）
+ * @apiParam {String} password 管理员密码（将进行 SHA256 加密后校验）
+ *
+ * @apiSuccess {Number} code 状态码 200 表示登录成功
+ * @apiSuccess {String} msg 返回信息
+ * @apiSuccess {Object} data 管理员信息
+ * @apiSuccess {String} data.account 管理员账号
+ * @apiSuccess {String} data.token 登录 token（需前端保存）
+ *
+ * @apiError (Error 500) {Number} code 状态码 500 表示登录失败
+ * @apiError (Error 500) {String} error 错误描述
  */
+
 router.post('/login', async (req, res) => {
   let {account,password} = req.body;
 
@@ -74,9 +94,23 @@ router.post('/login', async (req, res) => {
 );
 
 /**
- * 注册功能：
- * 需在进行注册后点击邮箱链接才可完成注册
+ * @api {post} /api/v1/admin/register 注册账号（发送邮箱验证）
+ * @apiName AdminRegister
+ * @apiGroup Admin
+ * @apiDescription 注册管理员账号。前端提交账号、密码和邮箱后，系统将发送一封验证邮件。用户需在30分钟内点击验证链接以完成注册。
+ *
+ * @apiParam {String} account 管理员账号（唯一）
+ * @apiParam {String} password 管理员密码（将进行 SHA256 加密）
+ * @apiParam {String} email 管理员邮箱地址（用于接收验证邮件）
+ *
+ * @apiSuccess {Number} code 状态码 200 表示邮件发送成功
+ * @apiSuccess {String} msg 返回信息
+ *
+ * @apiError (Error 400) {String} error 参数缺失或邮箱格式错误
+ * @apiError (Error 409) {String} error 账号或邮箱已被注册
+ * @apiError (Error 500) {String} error 系统内部错误
  */
+
 router.post('/register', async (req, res) => {
   //
   let {account,password,email} = req.body
@@ -139,42 +173,12 @@ router.post('/register', async (req, res) => {
 
       const verifyUrl = `http://localhost:3000/admin/verify?code=${verifyCode}`;
 
+      const htmlContent = await ejs.renderFile(templatePath, { verifyUrl });
       await transporter.sendMail({
         from: 'lrz08302005@163.com',
         to: email,
         subject: '注册验证 - 请确认你的邮箱',
-        //html: `<p>点击下面链接完成注册：</p><a href="${verifyUrl}">${verifyUrl}</a><p>30分钟内有效</p>`,
-        html:`<html>
-                <body style="font-family: Arial, sans-serif; background-color: #f9f9f9; margin: 0; padding: 0;">
-                  <table align="center" width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); padding: 20px;">
-                    <tr>
-                      <td style="text-align: center; padding-bottom: 20px;">
-                        <h2 style="color: #333333;">欢迎注册！</h2>
-                        <p style="color: #555555; font-size: 16px; margin: 0;">请点击下面的按钮完成邮箱验证，30分钟内有效。</p>
-                      </td>
-                    </tr>
-                    <tr>
-                      <td style="text-align: center; padding: 20px 0;">
-                        <a href="${verifyUrl}" style="background-color:rgb(76, 175, 79); color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">
-                          验证邮箱
-                        </a>
-                      </td>
-                    </tr>
-                    <tr>
-                      <td style="text-align: center; color: #999999; font-size: 12px; padding-top: 10px;">
-                        <p>如果按钮无法点击，请复制下面链接到浏览器打开：</p>
-                        <p style="word-break: break-all;">${verifyUrl}</p>
-                      </td>
-                    </tr>
-                    <tr>
-                      <td style="padding-top: 30px; font-size: 12px; color: #aaaaaa; text-align: center;">
-                        <p>如果你没有发起本次请求，请忽略此邮件。</p>
-                        <p>© 2025 BikeFlow 团队</p>
-                      </td>
-                    </tr>
-                  </table>
-                </body>
-              </html>`
+        html:htmlContent
       });
       res.status(200).send({
         code:200,
@@ -191,137 +195,45 @@ router.post('/register', async (req, res) => {
 });
 
 /**
- * 验证点击的链接所含的验证码是否有效
- * （该API不在前端进行调用，而是通过邮件中链接跳转访问）
+ * @api {get} /api/v1/admin/verify 邮箱验证链接跳转
+ * @apiName EmailVerify
+ * @apiGroup Admin
+ * @apiDescription 用户点击验证链接后触发此接口。若验证码有效，将正式创建账号，并返回一个 HTML 页面提示注册成功。
+ *
+ * @apiParam {String} code 邮件中附带的验证码（作为 URL 参数传递）
+ *
+ * @apiSuccessExample {html} 成功页面
+ *     HTTP/1.1 200 OK
+ *     <!DOCTYPE html>
+ *     <html> ... 注册成功的 HTML 页面 ... </html>
+ *
+ * @apiErrorExample {html} 验证失败页面
+ *     HTTP/1.1 200 OK
+ *     <!DOCTYPE html>
+ *     <html> ... 链接无效或已过期的提示页面 ... </html>
  */
+
 router.get('/verify', async (req, res) => {
   const { code } = req.query;
 
   const json = await redisClient.get(`register:${code}`);
   if (!json) {
-    return res.send(`
-      <!DOCTYPE html>
-      <html lang="zh-CN">
-      <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>注册验证失败</title>
-          <style>
-              body {
-                  font-family: 'Arial', sans-serif;
-                  background-color: #f5f5f5;
-                  display: flex;
-                  justify-content: center;
-                  align-items: center;
-                  height: 100vh;
-                  margin: 0;
-              }
-              .container {
-                  background: white;
-                  padding: 2rem;
-                  border-radius: 8px;
-                  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-                  text-align: center;
-                  max-width: 500px;
-              }
-              h1 {
-                  color: #e74c3c;
-              }
-              p {
-                  color: #555;
-                  margin-bottom: 1.5rem;
-              }
-              .icon {
-                  font-size: 3rem;
-                  color: #e74c3c;
-                  margin-bottom: 1rem;
-              }
-          </style>
-      </head>
-      <body>
-          <div class="container">
-              <div class="icon">❌</div>
-              <h1>注册验证失败</h1>
-              <p>链接无效或已过期！</p>
-              <p>请重新申请注册链接或联系管理员。</p>
-          </div>
-      </body>
-      </html>
-    `);
+    return res.status(500).render('registerFailed');
+  }else{
+    const { account, password, email } = JSON.parse(json);
+
+    // insert into info of user
+    await db.async.run(
+      "INSERT INTO `admin` (`account`,`password`,`email`) VALUES (?,?,?)",
+      [account, password, email]
+    );
+
+    await redisClient.del(`register:${code}`);
+
+    res.status(200).render('registerSuccess',{ account, email });
   }
 
-  const { account, password, email } = JSON.parse(json);
 
-  // insert into info of user
-  await db.async.run(
-    "INSERT INTO `admin` (`account`,`password`,`email`) VALUES (?,?,?)",
-    [account, password, email]
-  );
-
-  await redisClient.del(`register:${code}`);
-
-  res.send(`
-  <!DOCTYPE html>
-  <html lang="zh-CN">
-  <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>注册成功</title>
-      <style>
-          body {
-              font-family: 'Arial', sans-serif;
-              background-color: #f5f5f5;
-              display: flex;
-              justify-content: center;
-              align-items: center;
-              height: 100vh;
-              margin: 0;
-          }
-          .container {
-              background: white;
-              padding: 2rem;
-              border-radius: 8px;
-              box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-              text-align: center;
-              max-width: 500px;
-          }
-          h1 {
-              color: #2ecc71;
-          }
-          p {
-              color: #555;
-              margin-bottom: 1.5rem;
-          }
-          .icon {
-              font-size: 3rem;
-              color: #2ecc71;
-              margin-bottom: 1rem;
-          }
-          .account-info {
-              background: #f9f9f9;
-              padding: 1rem;
-              border-radius: 4px;
-              margin: 1rem 0;
-              text-align: left;
-          }
-      </style>
-  </head>
-  <body>
-      <div class="container">
-          <div class="icon">✓</div>
-          <h1>注册成功</h1>
-          <p>您的账户已成功创建！</p>
-          
-          <div class="account-info">
-              <p><strong>账号:</strong> ${account}</p>
-              <p><strong>邮箱:</strong> ${email}</p>
-          </div>
-          
-          <p>您现在可以登录您的账户。</p>
-      </div>
-  </body>
-  </html>
-`);
 });
 
 
