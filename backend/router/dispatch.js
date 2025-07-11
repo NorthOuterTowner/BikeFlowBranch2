@@ -256,10 +256,10 @@ router.get('/', async (req, res) => {
 // 0: pending, 1: executing, 2: completed
 const mapScheduleStatus = (statusInt) => {
     switch (statusInt) {
-        case 0: return 'pending';
-        case 1: return 'executing';
-        case 2: return 'completed';
-        default: return 'unknown';
+        case 0: return '待执行';
+        case 1: return '正在执行';
+        case 2: return '已完成';
+        default: return '未知';
     }
 };
 
