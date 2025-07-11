@@ -278,7 +278,7 @@ function updateHeatmapWithBlur() {
       'rgba(255, 255, 0, 1)'
     ]
   })
-  neutralLayer.setZIndex(1)
+  neutralLayer.setZIndex(2)
 
   mapInstance.addLayer(neutralLayer)
   mapInstance.addLayer(inflowLayer)
