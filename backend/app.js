@@ -28,8 +28,7 @@ const limiter = rateLimit({
 
 /* Cross-Origin Requests */
 app.use(function(req,res,next){
-    const allowedOrigin = process.env.CORS_ORIGIN;
-    res.header("Access-Control-Allow-Origin", allowedOrigin);
+    res.header("Access-Control-Allow-Origin", "*");
     res.header("Access-Control-Allow-Headers","*");
     res.header("Access-Control-Allow-Methods","DELETE,PUT,POST,GET,OPTIONS");
     res.header("Access-Control-Allow-Credentials", "true");

@@ -68,7 +68,14 @@
       }
     } catch (e) {
       console.error(e)
-      messageStore.setMessage('请求失败，请检查网络或后端服务', 'error')
+      console.error('后端返回：', e.response?.data) // 优先取后端返回的错误提示
+      const backendMsg = e.response?.data?.msg || e.response?.data?.error
+
+      if (backendMsg) {
+        messageStore.setMessage(backendMsg, 'error')
+      } else {
+        messageStore.setMessage('请求失败，请检查网络或后端服务', 'error')
+      }
     }
   }
 </script>

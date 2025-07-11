@@ -9,6 +9,11 @@ const Station = StationModel(sequelize,DataTypes)
 
 const authMiddleware = require("../utils/auth")
 
+const ScheduleModel = require('../orm/models/stationSchedule');
+const InfoModel = require('../orm/models/Station');
+const StationSchedule = ScheduleModel(sequelize,DataTypes);
+const StationInfo = InfoModel(sequelize,DataTypes);
+
 /**
  * @api {post} /change 执行调度
  * @apiDescription 根据调度内容从起点站取车，计算调度完成时间，并在调度完成后将终点站单车余量增加。
@@ -163,6 +168,103 @@ function calcLength(lat1, lng1, lat2, lng2) {
 
   return Math.round(R * c);
 }
+
+
+
+StationSchedule.belongsTo(StationInfo, { foreignKey: 'start_id', as: 'startStation' });
+StationSchedule.belongsTo(StationInfo, { foreignKey: 'end_id', as: 'endStation' });
+/**
+ * @api {get} /api/v1/schedules 查询调度任务
+ * @apiDescription 接收一个具体时间，查询该日期、该（向前取整）小时的所有已规划调度任务。
+ * @apiParam {String} query_time ISO 8601 格式的查询时间 (e.g., "2025-06-13T09:45:00Z").
+ */
+router.get('/', async (req, res) => {
+    const { query_time } = req.query;
+
+    if (!query_time) {
+        return res.status(400).json({ error: 'Missing required parameter: query_time.' });
+    }
+
+    try {
+        const queryDate = new Date(query_time);
+        if (isNaN(queryDate.getTime())) {
+            return res.status(400).json({ error: 'Invalid query_time format. Please use ISO 8601 format.' });
+        }
+
+        // --- 核心逻辑：计算目标日期和3小时周期的起始小时 ---
+        const dateForQuery = toYYYYMMDD(queryDate);
+        const originalHour = queryDate.getUTCHours();
+        // 向下取整到最近的3的倍数
+        const hourForQuery = Math.floor(originalHour / 3) * 3;
+
+        // 使用 Sequelize ORM 进行查询
+        const schedules = await StationSchedule.findAll({
+            where: {
+                date: dateForQuery,
+                hour: hourForQuery
+            },
+            include: [
+                {
+                    model: StationInfo,
+                    as: 'startStation',
+                    attributes: ['station_id', 'station_name', 'lat', 'lng']
+                },
+                {
+                    model: StationInfo,
+                    as: 'endStation',
+                    attributes: ['station_id', 'station_name', 'lat', 'lng']
+                }
+            ],
+            attributes: { exclude: ['start_id', 'end_id'] },
+            order: [['id', 'ASC']] // 按ID升序排序
+        });
+
+        // 将查询结果格式化为 API 需要的最终格式
+        const formattedSchedules = schedules.map(schedule => ({
+            schedule_id: schedule.id,
+            bikes_to_move: schedule.bikes,
+            status: mapScheduleStatus(schedule.status),
+            start_station: schedule.startStation ? { // 添加空值判断，防止关联数据不存在时报错
+                id: schedule.startStation.station_id,
+                name: schedule.startStation.station_name,
+                lat: schedule.startStation.lat,
+                lng: schedule.startStation.lng
+            } : null,
+            end_station: schedule.endStation ? {
+                id: schedule.endStation.station_id,
+                name: schedule.endStation.station_name,
+                lat: schedule.endStation.lat,
+                lng: schedule.endStation.lng
+            } : null,
+            updated_at: schedule.updated_at
+        }));
+
+        res.json({
+            lookup_date: dateForQuery,
+            lookup_hour: hourForQuery,
+            schedules: formattedSchedules
+        });
+    } catch (err) {
+        console.error('Schedule Lookup API Error (Sequelize):', err);
+        res.status(500).json({ error: 'An internal server error occurred.' });
+    }
+});
+
+// 辅助函数，将数据库中的 status 数字映射为可读文本
+// 0: pending, 1: executing, 2: completed
+const mapScheduleStatus = (statusInt) => {
+    switch (statusInt) {
+        case 0: return 'pending';
+        case 1: return 'executing';
+        case 2: return 'completed';
+        default: return 'unknown';
+    }
+};
+
+// 辅助函数，将 Date 对象格式化为 'YYYY-MM-DD'
+const toYYYYMMDD = (date) => {
+    return date.toISOString().slice(0, 10);
+};
 
 /**
  * 递归进行更改，将调度时间之后的所有时间对应余量均进行更改
