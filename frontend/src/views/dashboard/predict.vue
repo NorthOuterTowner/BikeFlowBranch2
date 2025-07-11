@@ -1,7 +1,5 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
-import { Style, Fill, Stroke, Circle } from 'ol/style'
-import VectorLayer from 'ol/layer/Vector'
 import request from '../../api/axios'
 import { useRouter } from 'vue-router'
 import Map from 'ol/Map'
