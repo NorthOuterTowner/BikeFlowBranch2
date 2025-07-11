@@ -1,5 +1,5 @@
 <template>
-  <div class="login-page">
+  <div class="login-page" @keydown.enter="doLogin">
     <n-spin :show="loading">
       <n-card class="login-card" bordered hoverable>
         <h1>BikeFlow</h1>
@@ -31,6 +31,7 @@
   import { login } from '../api/axios' 
   import { useMessageStore } from '../store/messageStore'  // 根据实际路径调整
   import { NInput, NButton, NAlert, NSpin } from 'naive-ui'
+  import { onMounted } from 'vue'
 
   const account = ref('')
   const password = ref('')
@@ -38,9 +39,12 @@
   const messageStore = useMessageStore()
   const loading = ref(false)
   
+  onMounted(() => {
+   messageStore.setMessage('', '')  // 页面加载时清空提示
+  })
+
   async function doLogin() {
     messageStore.setMessage('', '') // 清空提示
-
     try {
       const res = await login(account.value, password.value)
 
@@ -57,9 +61,8 @@
         // 等 1.5 秒后再跳转，让用户看到提示
         setTimeout(() => {
           loading.value = false // 结束加载状态
-          //messageStore.setMessage('', '')
           router.push('/dashboard')
-        }, 1500)
+        }, 1000)
       } else {
         messageStore.setMessage('登录失败: ' + res.data.msg, 'error')
       }
