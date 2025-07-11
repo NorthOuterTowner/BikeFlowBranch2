@@ -265,7 +265,21 @@ async function afterTimeSchedule(number,startStation,endStation,dispatchDate,dis
  * TO-DO：管理员拒绝该调度请求
  */
 router.post('/reject',authMiddleware, async (req,res)=>{
-
+  let {id} = req.body;
+  try{
+    const statusSql = " update `station_schedule` set `status` = -1 where `id` = ?;"
+    await db.async.run(statusSql,[id])
+    res.status(200).send({
+      code:200,
+      msg:"已拒绝该调度"
+    })
+  }catch(err){
+    res.status(200).send({
+      code:500,
+      msg:"服务器错误",
+      err
+    })
+  }
 })
 
 module.exports = router;
