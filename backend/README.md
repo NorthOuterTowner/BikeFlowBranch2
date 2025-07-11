@@ -279,7 +279,7 @@ predict_time	String	查询的时间点，ISO 8601格式。	2025-01-22T17:10:00Z
 }
 ```
 （2）拒绝调度（POST）
-拒绝调度将会将status设置为-1
+拒绝调度将会将调度方案删除
 ```bash
 /dispatch/reject
 ```
@@ -299,7 +299,7 @@ predict_time	String	查询的时间点，ISO 8601格式。	2025-01-22T17:10:00Z
 6. 返回调度信息
    （1）返回某一时间点所有调度信息（get）
 ```bash
-/schedules
+/dispatch
 ```
 请求格式
 ```bash
@@ -330,6 +330,47 @@ query_time	String	查询的时间点，ISO 8601格式。	2025-06-13T08:45:00Z
             "updated_at": "2025-07-11T10:32:31.000Z"
         }
         // ... 如果同一调度周期有其他任务，也会在此列出
+    ]
+}
+```
+（2）返回某一时间点与某一地点相关调度信息（get）  
+role选择end查询所有调出的信息 start为调入信息
+```bash
+/dispatch/by-station
+```
+请求格式
+```bash
+station_id	String	要查询的站点唯一ID。	HB101
+query_time	String	查询的时间点，ISO 8601格式。	2025-06-13T08:45:00Z
+role	String 可选	筛选站点在调度中的角色。<br> - 'start': 站点作为调出点（起点）。  'end': 站点作为调入点（终点）。如果省略此参数，将返回所有相关任务。	start	2025-06-13T08:45:00Z
+```
+返回格式
+```bash
+{
+    "lookup_date": "2025-06-13",
+    "lookup_hour": 6,
+    "station_id": "HB101",
+    "role_filter": "all",
+    "schedules": [
+        {
+            "schedule_id": 42,
+            "bikes_to_move": 5,
+            "status": "pending",
+            "start_station": {
+                "id": "HB101",
+                "name": "Hoboken Terminal - Hudson St & Hudson Pl",
+                "lat": 40.7359,
+                "lng": -74.0303
+            },
+            "end_station": {
+                "id": "JC053",
+                "name": "Lincoln Park",
+                "lat": 40.7246,
+                "lng": -74.0784
+            },
+            "updated_at": "2025-07-12T06:00:00.000Z"
+        }
+        ...
     ]
 }
 ```
