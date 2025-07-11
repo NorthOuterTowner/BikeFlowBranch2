@@ -21,6 +21,8 @@ export function register(username, password, email) {
     account: username,
     password: password,
     email:email
+  }, {
+    headers: { 'Content-Type': 'application/json' }  // 👈 确保是 json
   })
 }
 

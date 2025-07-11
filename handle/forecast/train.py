@@ -1,5 +1,6 @@
-import sys
-sys.stdout.reconfigure(encoding='utf-8')
+'''
+模型训练部分
+'''
 import numpy as np
 import torch
 import torch.nn as nn
