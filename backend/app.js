@@ -7,6 +7,8 @@ const {db,genid} = require("./db/dbUtils")
 const redis = require("redis")
 const redisClient = require("./db/redis")
 
+require("./queue/worker.js")
+
 const sequelize = require('./orm/sequelize');
 const path = require('path');
 

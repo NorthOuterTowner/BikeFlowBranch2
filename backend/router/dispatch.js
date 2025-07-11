@@ -14,6 +14,8 @@ const InfoModel = require('../orm/models/Station');
 const StationSchedule = ScheduleModel(sequelize,DataTypes);
 const StationInfo = InfoModel(sequelize,DataTypes);
 
+const dispatchQueue = require("../queue/dispatchQueue");
+
 /**
  * @api {post} /change 执行调度
  * @apiDescription 根据调度内容从起点站取车，计算调度完成时间，并在调度完成后将终点站单车余量增加。
@@ -40,74 +42,79 @@ const StationInfo = InfoModel(sequelize,DataTypes);
  * @apiError (500) {String} error 服务器错误提示，如"调度失败"。
  */
 router.post('/change', authMiddleware, async (req, res) => {
-    let { startStation,endStation,number,dispatchDate, dispatchHour,dispatchId } = req.body
-    
-    const queryStartsql = "select 1 from `station_real_data` where `station_id` = ? "
-    const queryEndSql = "select 1 from `station_real_data` where `station_id` = ? "
-    
-    let {err:startErr,rows:startRows} = await db.async.all(queryStartsql,[startStation])
-    let {err:endErr,rows:endRows} = await db.async.all(queryEndSql,[endStation])
+  let { startStation,endStation,number,dispatchDate, dispatchHour,dispatchId } = req.body
+  
+  const queryStartsql = "select 1 from `station_real_data` where `station_id` = ? "
+  const queryEndSql = "select 1 from `station_real_data` where `station_id` = ? "
+  
+  let {err:startErr,rows:startRows} = await db.async.all(queryStartsql,[startStation])
+  let {err:endErr,rows:endRows} = await db.async.all(queryEndSql,[endStation])
 
-    if(startErr == null && endErr == null && startRows.length > 0 && endRows.length > 0){
-        let changeableStock = 0
-        const getStockSql = "select `stock` from `station_real_data` where `station_id` = ? and `date` = ? and `hour` = ? "
-        let {err:searchErr,rows:searchRows} = await db.async.all(getStockSql,[startStation,dispatchDate,dispatchHour]) 
-        console.log(searchRows)
-        changeableStock = searchRows[0].stock
+  if(startErr == null && endErr == null && startRows.length > 0 && endRows.length > 0){
+    let changeableStock = 0
+    const getStockSql = "select `stock` from `station_real_data` where `station_id` = ? and `date` = ? and `hour` = ? "
+    let {err:searchErr,rows:searchRows} = await db.async.all(getStockSql,[startStation,dispatchDate,dispatchHour]) 
+    console.log(searchRows)
+    changeableStock = searchRows[0].stock
 
-        if(changeableStock < number){
-            res.status(422).send({//语义错误
-                code:422,
-                error:"该调度方案不可行，调度数量超过本站点车余量"
-            })
-        }else{
-          
-            const changeSql = "update `station_real_data` set `stock` = `stock` - ? where `station_id` = ? and `date` = ? and `hour` = ?;"
-            const changeSql2 = "update `station_real_data` set `stock` = `stock` + ? where `station_id` = ? and `date` = ? and `hour` = ?;"
-            
-            await db.async.run(changeSql,[number,startStation,dispatchDate,dispatchHour])
-            
-            let {lat:startLat,lng:startLng} = await getStationCoordinates(startStation)
-            let {lat:endLat,lng:endLng} = await getStationCoordinates(endStation)
-
-            const distance = calcLength(startLat,startLng,endLat,endLng)
-
-            let time = (distance/1000/20)*60*60*1000
-
-            //change status of dispatch
-            const statusSql = "update `station_schedule` set `status` = 1 where `id` = ? ;"
-            await db.async.run(statusSql,[dispatchId])
-
-            setTimeout(async()=>{
-                await db.async.run(changeSql2,[number,endStation,dispatchDate,dispatchHour])
-                const finishStatusSql = "update `station_schedule` set `status` = 2 where `id` = ?;"
-                await db.async.run(finishStatusSql,[dispatchId])
-            },time)
-
-            dispatchHour+=1;
-            while(dispatchHour<=23){
-              afterTimeSchedule(number,startStation,endStation,dispatchDate,dispatchHour);
-              dispatchHour++;
-            }
-
-            res.status(200).send({
-                code:200,
-                msg:"开始进行调度"
-            })
-        }  
+    if(changeableStock < number){
+        res.status(422).send({//语义错误
+            code:422,
+            error:"该调度方案不可行，调度数量超过本站点车余量"
+        })
     }else{
-        if(startRows.length == 0 || endRows.length == 0){
-            res.status(400).send({//客户端参数错误
-                code:400,
-                error:"无效站点"
-            })
-        }else{
-            res.status(500).send({
-                code:500,
-                error:"调度失败"
-            })
-        }
-    }
+
+      const changeSql = "update `station_real_data` set `stock` = `stock` - ? where `station_id` = ? and `date` = ? and `hour` = ?;"
+      await db.async.run(changeSql,[number,startStation,dispatchDate,dispatchHour])
+      
+      let {lat:startLat,lng:startLng} = await getStationCoordinates(startStation)
+      let {lat:endLat,lng:endLng} = await getStationCoordinates(endStation)
+
+      const distance = calcLength(startLat,startLng,endLat,endLng)
+
+      let time = (distance/1000/20)*60*60*1000
+      console.log(time)
+      //change status of dispatch
+      const statusSql = "update `station_schedule` set `status` = 1 where `id` = ? ;"
+      await db.async.run(statusSql,[dispatchId])
+
+      dispatchHour=parseInt(dispatchHour);
+      while(dispatchHour<=23){
+        afterTimeSchedule(number,startStation,dispatchDate,dispatchHour)
+        await dispatchQueue.add(
+          {
+            number,
+            endStation,
+            dispatchDate,
+            dispatchHour,
+            dispatchId
+          },{
+            delay: time,
+            attempts:3
+          }
+        );
+        console.log(`已加入调度队列，计划 ${time / 1000} 秒后执行 dispatchHour=${dispatchHour}`);
+        dispatchHour++;
+      }
+
+      res.status(200).send({
+          code:200,
+          msg:"开始进行调度"
+      })
+    }  
+  }else{
+      if(startRows.length == 0 || endRows.length == 0){
+          res.status(400).send({//客户端参数错误
+              code:400,
+              error:"无效站点"
+          })
+      }else{
+          res.status(500).send({
+              code:500,
+              error:"调度失败"
+          })
+      }
+  }
 });
 
 /**
@@ -269,20 +276,16 @@ const toYYYYMMDD = (date) => {
 };
 
 /**
- * 递归进行更改，将调度时间之后的所有时间对应余量均进行更改
+ * 递归进行更改，将调度时间之后的所有时间对应调度开始站点的余量进行更改
  * @param {*} number 
- * @param {*} startStation 
- * @param {*} endStation 
+ * @param {*} startStation
  * @param {*} dispatchDate 
  * @param {*} dispatchHour 
  */
-async function afterTimeSchedule(number,startStation,endStation,dispatchDate,dispatchHour){
+async function afterTimeSchedule(number,startStation,dispatchDate,dispatchHour){
   const changeSql = "update `station_real_data` set `stock` = `stock` - ? where `station_id` = ? and `date` = ? and `hour` = ?;"
-  const changeSql2 = "update `station_real_data` set `stock` = `stock` + ? where `station_id` = ? and `date` = ? and `hour` = ?;"
   await db.async.run(changeSql,[number,startStation,dispatchDate,dispatchHour])
-  await db.async.run(changeSql2,[number,endStation,dispatchDate,dispatchHour])
 }
-
 
 /**
  * @api {post} /reject 管理员拒绝该调度请求
