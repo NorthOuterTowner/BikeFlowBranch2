@@ -1,6 +1,4 @@
-const { DataTypes } = require('sequelize');
-
-module.exports = (sequelize) => {
+module.exports = (sequelize,DataTypes) => {
   const Admin = sequelize.define('Admin', {
     account: {
       type: DataTypes.STRING,
@@ -23,7 +21,8 @@ module.exports = (sequelize) => {
   }, {
     tableName: 'admin', 
     charset: 'latin1',
-    collate: 'latin1_swedish_ci' 
+    collate: 'latin1_swedish_ci' ,
+    timestamps: false
   });
 
   return Admin;
