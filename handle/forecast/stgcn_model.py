@@ -1,3 +1,6 @@
+'''
+模型结构
+'''
 # ./handle/forecast/stgcn_model.py
 import torch
 import torch.nn as nn
