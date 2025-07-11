@@ -325,7 +325,7 @@ router.post('/reject',authMiddleware, async (req,res)=>{
     });
   }else{
     try{
-      const statusSql = " update `station_schedule` set `status` = -1 where `id` = ?;"
+      const statusSql = " delete `station_schedule` where `id` = ?;"
       await db.async.run(statusSql,[id])
       res.status(200).send({
         code:200,
