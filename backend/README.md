@@ -277,3 +277,40 @@ predict_time	String	查询的时间点，ISO 8601格式。	2025-01-22T17:10:00Z
   "msg": "调度成功"
 }
 ```
+6. 返回调度信息
+   （1）返回某一时间点所有调度信息（get）
+```bash
+/schedules
+```
+请求格式
+```bash
+query_time	String	查询的时间点，ISO 8601格式。	2025-06-13T08:45:00Z
+```
+返回格式
+```bash
+{
+    "lookup_date": "2025-06-13",
+    "lookup_hour": 6,
+    "schedules": [
+        {
+            "schedule_id": 35,//调度编号
+            "bikes_to_move": 2,//移动车
+            "status": "待执行",//状态信息
+            "start_station": {
+                "id": "HB101",
+                "name": "Hoboken Terminal - Hudson St & Hudson Pl",
+                "lat": 40.7359,
+                "lng": -74.0303
+            },
+            "end_station": {
+                "id": "HB304",
+                "name": "Marshall St & 2 St",
+                "lat": 40.7408,
+                "lng": -74.0425
+            },
+            "updated_at": "2025-07-11T10:32:31.000Z"
+        }
+        // ... 如果同一调度周期有其他任务，也会在此列出
+    ]
+}
+```
