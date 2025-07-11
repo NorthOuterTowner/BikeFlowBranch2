@@ -61,7 +61,7 @@ function getStationStyle(bikeNum = 0) {
     })
   })
 }
-
+ 
 async function fetchStationLocations() {
   console.log('进到获取站点位置函数')
   try {

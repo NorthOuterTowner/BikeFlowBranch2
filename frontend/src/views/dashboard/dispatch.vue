@@ -48,9 +48,9 @@ onMounted(async () => {
   })
 
   const zoomControl = new Zoom({
-  className: 'ol-zoom-custom'
-})
-mapInstance.addControl(zoomControl)
+    className: 'ol-zoom-custom'
+  })
+  mapInstance.addControl(zoomControl)
 
 })
 </script>
