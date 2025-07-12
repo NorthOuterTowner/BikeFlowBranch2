@@ -185,7 +185,7 @@ router.post('/cancelChange',authMiddleware, async (req,res) => {
           dispatchHour,
           dispatchId
         },{
-          delay: time,
+          delay: time - (Date.now() - startTime),
           attempts:3
         }
       );
