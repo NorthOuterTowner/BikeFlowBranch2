@@ -65,7 +65,6 @@ router.post('/login', async (req, res) => {
   if (AdminContent!=null/*err == null && rows.length > 0*/){
     let login_account = AdminContent.account
     let login_token = uuidv4();
-    console.log("3")
     try{
       await Admin.update(
         { token: login_token },                // 要更新的字段
@@ -137,8 +136,6 @@ router.post('/register', async (req, res) => {
         ]
       }
     });
-    console.log("right2")
-    console.log(count)
     if (count > 0) {
       return res.status(409).send({ 
         error: "账号或邮箱已被注册" 
