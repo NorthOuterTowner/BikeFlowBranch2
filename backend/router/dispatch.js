@@ -157,10 +157,12 @@ router.post('/cancelChange',authMiddleware, async (req,res) => {
     } else {
       startTime = result.startTime
       calcDelay = result.calcDelay
+
+      await redisClient.del(scheduleKey);
     }
     await dispatchQueue.add(
         {
-          type:"cancel",
+          type:"cancelStart",
           number,
           startStation,
           endStation,
@@ -173,6 +175,20 @@ router.post('/cancelChange',authMiddleware, async (req,res) => {
         }
       );
 
+    await dispatchQueue.add(
+        {
+          type:"cancelEnd",
+          number,
+          startStation,
+          endStation,
+          dispatchDate,
+          dispatchHour,
+          dispatchId
+        },{
+          delay: time,
+          attempts:3
+        }
+      );
     res.status(200).send({
         code:200,
         msg:"开始返回调度"

@@ -16,18 +16,25 @@ dispatchQueue.process(async (job) => {
     const statusFinish = "update `station_schedule` set `status` = 2  where `id` = ? ;"
     await db.async.run(statusFinish,dispatchId)
 
-  }else if (type=="cancel"){
+  }else if (type=="cancelStart"){
     const { number, startStation,endStation, dispatchDate, dispatchHour, dispatchId } = job.data;
 
     let dispatchHourInt = parseInt(dispatchHour)
     while(dispatchHourInt <= 23){
       await cancelSchedule(number,startStation,dispatchDate,dispatchHourInt);
+      dispatchHourInt+=1;
+    }
+    console.log("setStatus")
+    const statusFinish = "update `station_schedule` set `status` = 0  where `id` = ? ;"
+    await db.async.run(statusFinish,dispatchId)
+  }else if (type == "cancelEnd"){
+    const { number, startStation,endStation, dispatchDate, dispatchHour, dispatchId } = job.data;
+
+    let dispatchHourInt = parseInt(dispatchHour)
+    while(dispatchHourInt <= 23){
       await cancelSchedule2(number,endStation,dispatchDate,dispatchHourInt);
       dispatchHourInt+=1;
     }
-
-    const statusFinish = "update `station_schedule` set `status` = 0  where `id` = ? ;"
-    await db.async.run(statusFinish,dispatchId)
   }
 
 
