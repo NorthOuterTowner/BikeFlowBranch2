@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { db } = require('../db/dbUtils');
 
-const sequelize = require('../orm/sequelize'); // 确保路径正确
+const sequelize = require('../orm/sequelize');
 const { DataTypes } = require('sequelize')
 const StationModel = require('../orm/models/Station');
 const Station = StationModel(sequelize,DataTypes)
@@ -128,6 +128,27 @@ router.post('/change', authMiddleware, async (req, res) => {
   }
 });
 
+/**
+ * @api {post} /cancelChange Cancel Bike Dispatch
+ * 
+ * @apiDescription Cancels a bike dispatch between two stations and schedules return trips.
+ *
+ * @apiBody {String} startStation ID of the starting station
+ * @apiBody {String} endStation ID of the destination station
+ * @apiBody {Number} number Number of bikes being dispatched
+ * @apiBody {String} dispatchDate Date of dispatch (YYYY-MM-DD format)
+ * @apiBody {Number} dispatchHour Hour of dispatch (0-23)
+ * @apiBody {String} dispatchId Unique ID of the dispatch
+ *
+ * @apiSuccess {Number} code HTTP status code (200)
+ * @apiSuccess {String} msg Success message
+ *
+ * @apiError {Number} code HTTP status code (400)
+ * @apiError {String} msg Error message when stations don't exist
+ *
+ * @apiError {Number} code HTTP status code (500)
+ * @apiError {String} msg Internal server error
+ */
 router.post('/cancelChange',authMiddleware, async (req,res) => {
   let { startStation,endStation,number,dispatchDate, dispatchHour,dispatchId } = req.body
   
