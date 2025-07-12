@@ -5,7 +5,15 @@ const { db } = require('../db/dbUtils');
 const authMiddleware = require("../utils/auth")
 
 /**
- * 查询所有站点信息
+ * @api {get} /locations 查询所有站点信息
+ *
+ * @apiSuccess {Object[]} rows 站点列表
+ * @apiSuccess {String} rows.station_id 站点ID
+ * @apiSuccess {String} rows.station_name 站点名称
+ * @apiSuccess {Number} rows.latitude 纬度
+ * @apiSuccess {Number} rows.longitude 经度
+ *
+ * @apiError (500) {Object} error 数据库查询失败
  */
 router.get('/locations', authMiddleware, async (req, res) => {
   try {
@@ -16,21 +24,31 @@ router.get('/locations', authMiddleware, async (req, res) => {
                            start_lng AS longitude
            FROM bike_trip`
       );
-    res.status(200).json(rows);
+    return res.status(200).json(rows);
   } catch (err) {
-    res.status(500).json({ error: '数据库查询失败' });
+    return res.status(500).json({ error: '数据库查询失败' });
   }
 });
 
 /**
- * 获取指定站点在指定时刻的单车余量
+ * @api {get} /bikeNum 获取指定站点在指定时刻的单车余量
+ *
+ * @apiQuery {String} station_id 站点ID
+ * @apiQuery {String} date 日期（格式：YYYY-MM-DD）
+ * @apiQuery {Number} hour 小时（0-23）
+ *
+ * @apiSuccess {Number} code 200
+ * @apiSuccess {Number} bikeNum 单车余量
+ *
+ * @apiError (500) {Number} code 500
+ * @apiError (500) {String} msg 错误信息（"无此站点" | "无此日期数据" | "查询失败"）
  */
 router.get("/bikeNum",authMiddleware, async(req,res)=>{
   const {station_id,date,hour} = req.query;
   const querySql = "select `stock` from `station_real_data` where `station_id` = ? and `date` = ? and `hour` = ? "
   let {err,rows} = await db.async.all(querySql,[station_id,date,hour])
   if(err==null && rows.length > 0){
-    res.send({
+    return res.send({
       code:200,
       bikeNum:rows[0].stock
     })
@@ -52,7 +70,7 @@ router.get("/bikeNum",authMiddleware, async(req,res)=>{
       errMsg = "查询失败"
     }
 
-    res.status(500).send({
+    return res.status(500).send({
       code:500,
       msg:errMsg
     })
@@ -60,14 +78,30 @@ router.get("/bikeNum",authMiddleware, async(req,res)=>{
 });
 
 /**
- * 获取指定时间所有站点的实际单车余量
+ * @api {get} /bikeNum/timeAll 获取指定时间所有站点的实际单车余量
+ * @apiQuery {String} date 日期（格式：YYYY-MM-DD）
+ * @apiQuery {Number} hour 小时（0-23）
+ *
+ * @apiSuccess {Number} code 200
+ * @apiSuccess {Object[]} rows 单车余量列表
+ * @apiSuccess {String} rows.station_id 站点ID
+ * @apiSuccess {Number} rows.stock 单车余量
+ *
+ * @apiError (400) {Number} code 400
+ * @apiError (400) {String} msg "参数缺失"
  */
 router.get("/bikeNum/timeAll",authMiddleware,async(req,res)=>{
   const {date,hour} = req.query
+  if(!date || !hour){
+    return res.status(400).send({
+      code:400,
+      msg:"参数缺失"
+    })
+  }
   const querySql = " select `station_id`,`stock` from `station_real_data` where `date` = ? and `hour` = ? "
   let {err,rows} = await db.async.all(querySql,[date,hour])
   if(err == null && rows.length > 0){
-    res.status(200).send({
+    return res.status(200).send({
       code:200,
       rows
     })
@@ -75,14 +109,22 @@ router.get("/bikeNum/timeAll",authMiddleware,async(req,res)=>{
 })
 
 /**
- * 获取指定站点在所有时间的实际单车余量
+ * @api {get} /bikeNum/stationAll 获取指定站点在所有时间的实际单车余量
+ *
+ * @apiQuery {String} station_id 站点ID
+ *
+ * @apiSuccess {Number} code 200
+ * @apiSuccess {Object[]} rows 单车余量列表
+ * @apiSuccess {String} rows.date 日期（YYYY-MM-DD）
+ * @apiSuccess {Number} rows.hour 小时（0-23）
+ * @apiSuccess {Number} rows.stock 单车余量
  */
 router.get("/bikeNum/stationAll",authMiddleware,async(req,res)=>{
   const {station_id} = req.query
   const querySql = " select `date`,`hour`,`stock` from `station_real_data` where `station_id` = ? "
   let {err,rows} = await db.async.all(querySql,[station_id])
   if(err == null && rows.length > 0){
-    res.status(200).send({
+    return res.status(200).send({
       code:200,
       rows
     })

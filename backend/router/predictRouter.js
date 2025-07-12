@@ -66,7 +66,7 @@ router.get('/station', authMiddleware,async (req, res) => {
 
     } catch (err) {
         console.error('Station Status Lookup API Error:', err);
-        res.status(500).json({ error: 'An internal server error occurred.' });
+        return res.status(500).json({ error: 'An internal server error occurred.' });
     }
 });
 

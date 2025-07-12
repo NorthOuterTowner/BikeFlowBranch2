@@ -20,7 +20,7 @@ router.get('/', (req, res) => {
     }
 
     console.log(`[调度成功] 输出:`, stdout);
-    return res.json({ success: true, message: '调度成功', output: stdout });
+    return res.status(200).json({ success: true, message: '调度成功', output: stdout });
   });
 });
 

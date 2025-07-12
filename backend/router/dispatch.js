@@ -58,7 +58,7 @@ router.post('/change', authMiddleware, async (req, res) => {
     changeableStock = searchRows[0].stock
 
     if(changeableStock < number){
-        res.status(422).send({//语义错误
+        return res.status(422).send({//语义错误
             code:422,
             error:"该调度方案不可行，调度数量超过本站点车余量"
         })
