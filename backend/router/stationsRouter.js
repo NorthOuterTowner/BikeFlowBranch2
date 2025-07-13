@@ -4,29 +4,52 @@ const { db } = require('../db/dbUtils');
 
 const authMiddleware = require("../utils/auth")
 
+
 /**
  * @api {get} /locations 查询所有站点信息
+ * @apiDescription 从 station_info 表获取所有站点的基础信息列表。
  *
  * @apiSuccess {Object[]} rows 站点列表
  * @apiSuccess {String} rows.station_id 站点ID
  * @apiSuccess {String} rows.station_name 站点名称
- * @apiSuccess {Number} rows.latitude 纬度
- * @apiSuccess {Number} rows.longitude 经度
+ * @apiSuccess {Number} rows.lat 纬度
+ * @apiSuccess {Number} rows.lng 经度
+ * @apiSuccess {Number} rows.capacity 站点容量
  *
  * @apiError (500) {Object} error 数据库查询失败
  */
 router.get('/locations', authMiddleware, async (req, res) => {
   try {
-      const { err, rows } = await db.async.all(
-          `SELECT DISTINCT start_station_id AS station_id,
-                           start_station_name AS station_name,
-                           start_lat AS latitude,
-                           start_lng AS longitude
-           FROM bike_trip`
-      );
+    // --- 修改点：从 station_info 表读取 ---
+    const sql = `
+        SELECT
+            station_id,
+            station_name,
+            lat,
+            lng,
+            capacity
+        FROM
+            station_info
+        ORDER BY
+            station_id ASC; -- 按ID排序，使返回结果稳定
+    `;
+
+    const { err, rows } = await db.async.all(sql);
+
+    // 数据库查询本身出错
+    if (err) {
+      console.error('Failed to fetch station locations:', err);
+      // 将具体的数据库错误信息记录在服务器日志，但返回给客户端一个通用的错误消息
+      return res.status(500).json({ error: '数据库查询失败' });
+    }
+
+    // 成功返回查询结果
     return res.status(200).json(rows);
+
   } catch (err) {
-    return res.status(500).json({ error: '数据库查询失败' });
+    // 捕获 Promise aync/await 过程中的意外错误
+    console.error('Unexpected error in /locations route:', err);
+    return res.status(500).json({ error: '服务器内部错误' });
   }
 });
 
