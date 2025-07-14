@@ -45,10 +45,9 @@ class STGCN(nn.Module):
         self.block2 = STGCNBlock(64, 64, num_nodes)
         self.block3 = STGCNBlock(64, 64, num_nodes)
         self.block4 = STGCNBlock(64, 64, num_nodes)
-        self.final_conv = nn.Sequential(
-            nn.Conv2d(64, out_channels, kernel_size=(1, 1)),
-            nn.Sigmoid()  # 将输出限制在[0,1]范围
-        )
+        self.final_conv = nn.Conv2d(64, out_channels, kernel_size=(1, 1))  # 去掉Sigmoid，输出范围不限
+
+    
 
     def forward(self, x, edge_index, edge_weight, hour_idx, day_idx):
         # 修改时间嵌入和日期嵌入的维度扩展方式

@@ -18,7 +18,7 @@ torch.cuda.empty_cache()
 timesteps = 24
 predict_steps = 1
 num_features = 2
-num_epochs = 10  # 增加epoch数量
+num_epochs = 20  # 增加epoch数量
 batch_size = 8  # 增大batch size
 learning_rate = 0.001
 
@@ -68,26 +68,34 @@ model = STGCN(num_nodes=num_nodes, in_channels=num_features, out_channels=num_fe
 
 # 优化器和损失函数
 optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=1e-4)
-class ImprovedLoss(nn.Module):
-    def __init__(self):
+class WeightedMSELossWithDiversity(nn.Module):
+    def __init__(self, inflow_weight=2.0, outflow_weight=1.0, diversity_weight=0.2):
         super().__init__()
-        self.base_loss = nn.HuberLoss()
-        
-    def forward(self, pred, target):
-        main_loss = self.base_loss(pred, target)
-        
-        # 鼓励输出多样性（最大化标准差）
-        station_std = torch.std(pred, dim=[0,1,3]).mean()
-        diversity_reward = 1.0 / (station_std + 1e-6)
-        
-        return main_loss + 0.05 * diversity_reward  # 调整权重
+        self.inflow_weight = inflow_weight
+        self.outflow_weight = outflow_weight
+        self.diversity_weight = diversity_weight
 
-criterion = ImprovedLoss()
+    def forward(self, pred, target):
+        # [B, C, N, 1] -> [B, N, 1, C] -> squeeze: [B, N, C]
+        pred = pred.permute(0, 2, 3, 1).squeeze(-2)
+        target = target.permute(0, 2, 3, 1).squeeze(-2)
+
+        inflow_loss = ((pred[..., 0] - target[..., 0]) ** 2).mean()
+        outflow_loss = ((pred[..., 1] - target[..., 1]) ** 2).mean()
+        base_loss = self.inflow_weight * inflow_loss + self.outflow_weight * outflow_loss
+
+        # 多样性惩罚：鼓励标准差大
+        station_std = torch.std(pred, dim=[0, 1]).mean()
+        diversity_penalty = 1.0 / (station_std + 1e-6)
+
+        return base_loss + self.diversity_weight * diversity_penalty
+
+criterion = WeightedMSELossWithDiversity(inflow_weight=2.0)
 # 学习率调度器
 steps_per_epoch = len(X_train) // batch_size
 scheduler = optim.lr_scheduler.OneCycleLR(
     optimizer,
-    max_lr=0.01,
+    max_lr=0.02,
     steps_per_epoch=steps_per_epoch,
     epochs=num_epochs,
     pct_start=0.3
@@ -132,8 +140,8 @@ for epoch in range(num_epochs):
         batch_count += 1
         
         # 打印批次信息
-        if (i//batch_size) % 50 == 0:
-            print(f"Epoch {epoch+1} | Batch {i//batch_size+1} | Loss: {loss.item():.4f} | LR: {scheduler.get_last_lr()[0]:.6f}")
+        #if (i//batch_size) % 50 == 0:
+        #    print(f"Epoch {epoch+1} | Batch {i//batch_size+1} | Loss: {loss.item():.4f} | LR: {scheduler.get_last_lr()[0]:.6f}")
     
     # 计算平均训练损失
     avg_train_loss = total_loss / batch_count
