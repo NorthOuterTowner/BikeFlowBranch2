@@ -637,8 +637,22 @@ async function batchCancel() {
 
 <style scoped>
 /* header 和布局样式 */
-.title { font-size:18px; font-weight:bold; }
-.user-info { text-align:right; }
+
+.title {
+  font-size: 20px;
+  font-weight: bold;
+  margin: 0;
+}
+
+.user-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  margin-left: 20px;
+  gap: 15px;
+  flex-shrink: 0;
+}
+
 .logout-button { background:#091275; color:white; border:none; padding:4px 8px; border-radius:4px; cursor:pointer; }
 /* 左侧面板 */
 .plan-item { border:1px solid #ddd; margin-bottom:6px; padding:6px; border-radius:4px; cursor:pointer; }
@@ -816,6 +830,7 @@ async function batchCancel() {
   align-items: center;
   gap: 12px;
 }
+
 .highlight-info-panel {
   position: absolute;
   top: 10px;
@@ -850,6 +865,33 @@ async function batchCancel() {
   display: inline-block;
   width: 1em; /* 确保点和文本对齐 */
   margin-left: -1em; /* 向左移动点 */
+}
+
+.right-time {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.right-time label {
+  font-size: 14px;
+  color: #495057;
+  white-space: nowrap;
+}
+
+
+.right-time .fixed-date {
+  margin-right: 20px;
+  font-weight: bold;
+  color: #091275;
+}
+
+.right-time select {
+  padding: 6px 10px;
+  font-size: 14px;
+  height: 30px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
 }
 
 </style>
