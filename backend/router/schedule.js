@@ -1,9 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const { exec } = require('child_process');
+const authMiddleware = require("../utils/auth");
 
 // GET /api/schedule?date=2025-06-13&hour=9
-router.get('/', (req, res) => {
+router.get('/',authMiddleware, (req, res) => {
   const { date, hour } = req.query;
 
   if (!date || !hour) {
