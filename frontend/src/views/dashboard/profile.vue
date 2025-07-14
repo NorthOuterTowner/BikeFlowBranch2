@@ -34,6 +34,19 @@
                   <div class="info-value">{{ email }}</div>
                 </div>
               </div>
+
+              <!-- 新增：修改账号 -->
+              <div class="reset-account">
+                <h3>修改账号</h3>
+                <input
+                  type="text"
+                  v-model="newAccount"
+                  placeholder="请输入新账号"
+                />
+                <button @click="handleResetAccount">修改账号</button>
+              </div>
+
+              <div v-if="message" class="message">{{ message }}</div>
             </div>
           </div>
         </div>
@@ -45,11 +58,14 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import request from '../../api/axios' // 根据实际路径调整
 
 const router = useRouter()
 const welcoming = ref('管理员，欢迎您！')
 const account = ref('')
 const email = ref('')
+const newAccount = ref('')
+const message = ref('')
 
 const logout = async () => {
   try {
@@ -57,11 +73,59 @@ const logout = async () => {
   } catch (error) {
     console.warn('登出失败，可忽略', error)
   } finally {
-    // 清除所有 sessionStorage 项
     sessionStorage.clear()
     router.push('/login')
   }
 }
+
+// 调用接口重置账号
+async function resetAccount(oldName, newName) {
+  return request.post(
+    '/reset/account',
+    { oldName, newName },
+    {
+      headers: {
+        account: sessionStorage.getItem('account'),
+        token: sessionStorage.getItem('token'),
+      },
+    }
+  )
+}
+
+const handleResetAccount = async () => {
+  console.log('handleResetAccount 调用')
+  if (!newAccount.value.trim()) {
+    message.value = '请输入新账号'
+    console.log('新账号为空，退出')
+    return
+  }
+  try {
+    const oldName = sessionStorage.getItem('account')
+    console.log('oldName:', oldName)
+    if (!oldName) {
+      message.value = '当前未登录，无法修改账号'
+      console.log('未登录，退出')
+      return
+    }
+    const res = await resetAccount(oldName, newAccount.value.trim())
+    console.log('接口返回:', res)
+    if (res.data.status === 200) {
+      message.value = res.data.msg || '账号重置成功'
+      account.value = newAccount.value.trim()
+      sessionStorage.setItem('account', newAccount.value.trim())
+      newAccount.value = ''
+    } else {
+      message.value = res.data.msg || '账号重置失败'
+      console.log('接口返回失败:', res.data)
+}
+
+  } catch (error) {
+    message.value = '请求失败，请稍后重试'
+    console.error('请求异常:', error)
+  }
+}
+
+
 
 onMounted(() => {
   account.value = sessionStorage.getItem('account') || '未登录'
@@ -120,6 +184,33 @@ onMounted(() => {
 
 .logout-button:hover {
   background-color: #0d1c9e;
+}
+
+.reset-account {
+  margin-top: 20px;
+}
+.reset-account input {
+  padding: 6px 8px;
+  width: 200px;
+  margin-right: 10px;
+}
+.reset-account button {
+   padding: 6px 12px;
+  background-color: #091275;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s;
+}
+.reset-account button:hover {
+  background-color: #0d1c9e;
+}
+
+.message {
+  margin-top: 10px;
+  color: rgb(0, 0, 0);
 }
 
 /* 主内容区域 */
