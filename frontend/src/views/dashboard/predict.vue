@@ -246,6 +246,8 @@ const logout = async () => {
   } catch (error) {
     console.warn('登出失败，可忽略', error)
   } finally {
+    // 清除所有 sessionStorage 项
+    sessionStorage.clear()
     router.push('/login')
   }
 }
@@ -873,11 +875,7 @@ mapInstance.addControl(zoomControl)
     width: 100%;
   }
   
-  .user-info {
-    width: 100%;
-    margin-left: 0;
-    align-items: stretch;
-  }
+
   
   .control-panel {
     align-items: stretch;

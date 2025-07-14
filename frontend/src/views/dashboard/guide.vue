@@ -94,13 +94,13 @@ async function fetchDispatchPlans(queryTime) {
       return []     
     }          
     
-    // 🔥 添加详细调试信息 - 查看第一个调度方案的数据结构     
+    // 添加详细调试信息 - 查看第一个调度方案的数据结构     
     if (response.data.schedules.length > 0) {       
       console.log('第一个调度方案的数据结构:', response.data.schedules[0])       
       console.log('所有字段名:', Object.keys(response.data.schedules[0]))     
     }          
     
-    // 🔥 修复验证逻辑 - 使用正确的字段名     
+    // 修复验证逻辑 - 使用正确的字段名     
     const validSchedules = response.data.schedules.filter(schedule => {       
       // 记录每个字段的验证结果       
       const hasStartStation = schedule.start_station !== undefined && schedule.start_station !== null       
@@ -162,49 +162,58 @@ async function fetchDispatchPlans(queryTime) {
  */
 function buildQueryTime(date, hour) {
   try {
-    let hourStr = hour.toString()
-    if (!/\d{1,2}:\d{2}/.test(hourStr)) {
-      const hourNum = parseInt(hourStr)
-      hourStr = hourNum.toString().padStart(2, '0') + ':00'
+    let hourStr = '';
+    // 如果 hour 已经是形如 "HH:mm" 的字符串，直接用
+    if (typeof hour === 'string' && /^\d{1,2}:\d{2}$/.test(hour)) {
+      hourStr = hour.padStart(5, '0'); // 确保格式是 05:00
+    } else {
+      // 否则当做数字处理，只取小时部分，格式化为两位数 + ":00"
+      const hourNum = parseInt(hour, 10);
+      if (isNaN(hourNum) || hourNum < 0 || hourNum > 23) {
+        throw new Error('小时参数无效');
+      }
+      hourStr = hourNum.toString().padStart(2, '0') + ':00';
     }
-    return `${date}T${hourStr}:00Z`
+    return `${date}T${hourStr}:00Z`;
   } catch (error) {
-    console.error('构建查询时间失败:', error)
-    return new Date().toISOString()
+    console.error('构建查询时间失败:', error);
+    return new Date().toISOString();
   }
 }
+
+
 
 /**
  * 调用 OpenRouteService 获取路线
  */
 async function getRoute(startCoord, endCoord) {
   try {
-    const response = await fetch(`${ORS_BASE_URL}/directions/cycling-regular`, {
+    const response = await fetch(`${ORS_BASE_URL}/directions/driving-car/geojson`, {
       method: 'POST',
       headers: {
-        'Accept': 'application/json, application/geo+json, application/gpx+xml, img/png; charset=utf-8',
+        'Accept': 'application/json, application/geo+json',
         'Authorization': ORS_API_KEY,
         'Content-Type': 'application/json; charset=utf-8'
       },
       body: JSON.stringify({
-        coordinates: [[startCoord[0], startCoord[1]], [endCoord[0], endCoord[1]]],
+        coordinates: [startCoord, endCoord],
         format: 'geojson',
         instructions: true,
         language: 'zh-cn'
       })
     })
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-    
-    const data = await response.json()
+
+    const raw = await response.text()
+    console.log('ORS 原始响应:', raw)
+
+    const data = JSON.parse(raw)
     return data
   } catch (error) {
     console.error('获取路线失败:', error)
     throw error
   }
 }
+
 
 /**
  * 显示导航路线
@@ -216,6 +225,9 @@ async function showNavigation(dispatch) {
     
     // 获取起点和终点坐标
     let startCoord, endCoord
+    console.log('startCoord:', startCoord)
+    console.log('endCoord:', endCoord)
+
     
     if (dispatch.startStationLat && dispatch.startStationLng && dispatch.endStationLat && dispatch.endStationLng) {
       startCoord = [parseFloat(dispatch.startStationLng), parseFloat(dispatch.startStationLat)]

@@ -366,7 +366,7 @@ async function toggleDispatchLayerWithAPI() {
     // 显示调度图层
     if (dispatchPlans.value.length === 0) {
       // 构建查询时间
-      const queryTime = buildQueryTime(fixedDate.value, '9：00')
+      const queryTime = buildQueryTime(fixedDate.value, '09:00')
       
       // 获取真实的调度方案数据
       await fetchDispatchPlans(queryTime)
@@ -489,7 +489,6 @@ function createArrowHeadStyle(endCoordinate, rotation, color = '#ff6b35') {
 function calculateAngle(start, end) {
   const dx = end[0] - start[0]
   const dy = end[1] - start[1]
-  // 修改：使用Math.atan2计算从起点到终点的角度
   return Math.atan2(dy, dx)
 }
 
@@ -799,7 +798,7 @@ function updateMapDisplay() {
     try {
       mapInstance.getView().animate({
         center: fromLonLat([longitude, latitude]),
-        zoom: 20,
+        zoom: 18,
         duration: 1000
       })
       console.log('地图动画执行成功')
@@ -822,6 +821,8 @@ const logout = async () => {
   } catch (error) {
     console.warn('登出失败，可忽略', error)
   } finally {
+    // 清除所有 sessionStorage 项
+    sessionStorage.clear()
     router.push('/login')
   }
 }
@@ -1042,6 +1043,7 @@ defineExpose({
   gap: 15px;
   flex-shrink: 0;
 }
+
 
 .user-top {
   display: flex;

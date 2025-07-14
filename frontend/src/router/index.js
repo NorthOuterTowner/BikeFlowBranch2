@@ -13,37 +13,41 @@ import dispatch from '../views/dashboard/dispatch.vue'
 import guide from '../views/dashboard/guide.vue'
 
 const routes = [
-  { path: '/', redirect: '/login' },    // 默认跳到 dashboard
+  { path: '/', redirect: '/login' },
   { path: '/login', component: Login },
   { path: '/register', component: Register },
-  { path: '/dashboard', component: Dashboard ,
+  {
+    path: '/dashboard',
+    component: Dashboard,
     children: [
-        { path: '', redirect: '/dashboard/mapView' },  // 默认进来显示地图页
-        { path: 'mapView', component: MapView },
-        { path: 'predict', component: Predict },
-        { path: 'settings', component: Settings },
-        { path: 'profile', component: Profile },
-        {path: 'schedule', component: schedule },
-        {path:'dispatch', component: dispatch },
-        {path: 'guide', component: guide }
+      { path: '', redirect: '/dashboard/mapView' },
+      { path: 'mapView', component: MapView },
+      { path: 'predict', component: Predict },
+      { path: 'settings', component: Settings },
+      { path: 'profile', component: Profile },
+      { path: 'schedule', component: schedule },
+      { path: 'dispatch', component: dispatch },
+      { path: 'guide', component: guide }
     ]
   },
 ]
 
+//  先创建 router
+const router = createRouter({
+  history: createWebHistory(),
+  routes
+})
+
+// 再添加导航守卫
 router.beforeEach((to, from, next) => {
   const publicPages = ['/login', '/register']
   const authRequired = !publicPages.includes(to.path)
-  const loggedIn = localStorage.getItem('token')  // 或其他标识
+  const loggedIn = sessionStorage.getItem('token') 
 
   if (authRequired && !loggedIn) {
     return next('/login')
   }
   next()
-})
-
-const router = createRouter({
-  history: createWebHistory(),
-  routes
 })
 
 export default router

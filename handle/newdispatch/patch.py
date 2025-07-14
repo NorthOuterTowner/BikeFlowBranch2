@@ -208,11 +208,13 @@ def run_scheduler_for_timepoint(date_str, hour):
     save_schedule_to_db(date_str, hour, actions)
 
 # ---------- 示例入口 ----------
+'''
 if __name__ == '__main__':
     run_scheduler_for_timepoint("2025-06-13", 9)
-
-# patch.py 最后加上这段
 '''
+    
+# patch.py 最后加上这段
+
 if __name__ == '__main__':
     
     import argparse
@@ -221,4 +223,3 @@ if __name__ == '__main__':
     parser.add_argument('--hour', type=int, required=True, help='小时，例如 9 表示 09:00')
     args = parser.parse_args()
     run_scheduler_for_timepoint(args.date, args.hour)
-'''
