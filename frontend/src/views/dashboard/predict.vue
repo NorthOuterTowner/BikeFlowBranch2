@@ -875,11 +875,7 @@ mapInstance.addControl(zoomControl)
     width: 100%;
   }
   
-  .user-info {
-    width: 100%;
-    margin-left: 0;
-    align-items: stretch;
-  }
+
   
   .control-panel {
     align-items: stretch;

@@ -129,8 +129,11 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 8px;
+  margin-left: 20px;
+  gap: 15px;
+  flex-shrink: 0;
 }
+
 
 .user-top {
   display: flex;
