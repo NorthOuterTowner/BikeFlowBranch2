@@ -53,16 +53,19 @@ const email = ref('')
 
 const logout = async () => {
   try {
-    await fetch('/api/user/logout', { method: 'POST' })
-  } catch (err) {
-    console.warn('退出失败', err)
+    await request.post('/api/user/logout')
+  } catch (error) {
+    console.warn('登出失败，可忽略', error)
+  } finally {
+    // 清除所有 sessionStorage 项
+    sessionStorage.clear()
+    router.push('/login')
   }
-  router.push('/login')
 }
 
 onMounted(() => {
-  account.value = localStorage.getItem('account') || '未登录'
-  email.value = localStorage.getItem('email') || '未绑定'
+  account.value = sessionStorage.getItem('account') || '未登录'
+  email.value = sessionStorage.getItem('email') || '未绑定'
 })
 </script>
 

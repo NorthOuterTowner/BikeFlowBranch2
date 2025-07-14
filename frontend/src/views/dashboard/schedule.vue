@@ -821,6 +821,8 @@ const logout = async () => {
   } catch (error) {
     console.warn('登出失败，可忽略', error)
   } finally {
+    // 清除所有 sessionStorage 项
+    sessionStorage.clear()
     router.push('/login')
   }
 }
