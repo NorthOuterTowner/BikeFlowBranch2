@@ -34,4 +34,34 @@ export function login(username, password) {
   })
 }
 
+export function getDispatch(queryTime) {
+  return request.get('/dispatch', {
+    params: { query_time: queryTime }
+  })     
+}
+
+export function startDispatch(data) {
+  return request.post('/dispatch/change', data)
+}
+
+export function cancelDispatch(data) {
+  return request.post('/dispatch/cancelChange', data)
+}
+
+export async function getStationAssign(params = {}) {
+  try {
+    const res = await request.get('/search/stationAssign', { params });
+    console.log('调出站点接口返回:', res.data);
+    const result = res.data.station_result;
+    if (!result || !Array.isArray(result)) {
+      console.error('获取调出站点失败，返回数据格式错误', res.data);
+      return [];
+    }
+    return result;
+  } catch (error) {
+    console.error('获取调出站点接口请求失败', error);
+    return [];
+  }
+}
+
 export default request
