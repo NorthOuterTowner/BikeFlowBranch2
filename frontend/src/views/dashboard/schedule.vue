@@ -572,7 +572,7 @@ function onMapHover(evt) {
     try {
       mapInstance.getView().animate({
         center: fromLonLat([longitude, latitude]),
-        zoom: 20,
+        zoom: 18,
         duration: 1000
       })
       console.log('地图动画执行成功')
