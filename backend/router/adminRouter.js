@@ -77,6 +77,7 @@ router.post('/login', async (req, res) => {
     let admin_info = AdminContent
     admin_info.password = ""
     admin_info.token = login_token
+    admin_info.email = admin_info.email || ""
 
     res.status(200).send({
       code:200,

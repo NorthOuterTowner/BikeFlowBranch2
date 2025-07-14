@@ -46,6 +46,23 @@
                 <button @click="handleResetAccount">修改账号</button>
               </div>
 
+              <!-- 新增：修改密码 -->
+              <div class="reset-account">
+                <h3>修改密码</h3>
+                <input
+                  type="email"
+                  v-model="email"
+                  placeholder="请输入绑定的邮箱"
+                  disabled
+                />
+                <input
+                  type="password"
+                  v-model="newPassword"
+                  placeholder="请输入新密码"
+                />
+                <button @click="handleResetPassword">修改密码</button>
+              </div>
+
               <div v-if="message" class="message">{{ message }}</div>
             </div>
           </div>
@@ -90,6 +107,48 @@ async function resetAccount(oldName, newName) {
       },
     }
   )
+}
+async function reserPassword(email, newPassword) {
+  return request.post(
+    '/reset/pwd',
+    { email, newPassword },
+    {
+      headers: {
+        account: sessionStorage.getItem('account'),
+        token: sessionStorage.getItem('token'),
+      },
+    }
+  )
+}
+
+const handleResetPassword = async () => {
+  console.log('handleResetPassword 调用')
+  if (!newAccount.value.trim()) {
+    message.value = '请输入新密码'
+    console.log('新密码为空，退出')
+    return
+  }
+  try {
+    const emailValue = sessionStorage.getItem('email')
+    console.log('email:', emailValue)
+    if (!emailValue) {
+      message.value = '当前未绑定邮箱，无法修改密码'
+      console.log('未绑定邮箱，退出')
+      return
+    }
+    const res = await reserPassword(emailValue, newAccount.value.trim())
+    console.log('接口返回:', res)
+    if (res.data.status === 200) {
+      message.value = res.data.msg || '请在邮箱确认修改密码'
+      newAccount.value = ''
+    } else {
+      message.value = res.data.msg || '密码重置失败'
+      console.log('接口返回失败:', res.data)
+    }
+  } catch (error) {
+    message.value = '请求失败，请稍后重试'
+    console.error('请求异常:', error)
+  }
 }
 
 const handleResetAccount = async () => {
