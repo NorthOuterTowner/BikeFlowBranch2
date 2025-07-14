@@ -6,8 +6,8 @@ const request = axios.create({
 })
 
 request.interceptors.request.use(config => {
-  const token = localStorage.getItem('token')
-  const account = localStorage.getItem('account')
+  const token = sessionStorage.getItem('token')
+  const account = sessionStorage.getItem('account')
   if (token && account) {
     config.headers['token'] = token
     config.headers['account'] = account
