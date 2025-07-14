@@ -40,16 +40,37 @@ dispatchQueue.process(async (job) => {
 
 });
 
+/**
+ * Increase the bike stock at the destination station after a specified delay during scheduling 
+ * @param {*} number 
+ * @param {*} endStation 
+ * @param {*} dispatchDate 
+ * @param {*} dispatchHour 
+ */
 async function afterTimeSchedule2(number,endStation,dispatchDate,dispatchHour) {
   const changeSql = "update `station_real_data` set `stock` = `stock` + ? where `station_id` = ? and `date` = ? and `hour` = ?;"
   await db.async.run(changeSql,[number,endStation,dispatchDate,dispatchHour])
 }
 
+/**
+ * Increase the bike stock at the origin station station after a specified delay when scheduling canceled
+ * @param {*} number 
+ * @param {*} startStation 
+ * @param {*} dispatchDate 
+ * @param {*} dispatchHour 
+ */
 async function cancelSchedule(number,startStation,dispatchDate,dispatchHour) {
   const changeSql = "update `station_real_data` set `stock` = `stock` + ? where `station_id` = ? and `date` = ? and `hour` = ?;"
   await db.async.run(changeSql,[number,startStation,dispatchDate,dispatchHour])
 }
 
+/**
+ * Decrease the bike stock at the destination station after a specified delay when scheduling canceled
+ * @param {*} number 
+ * @param {*} endStation 
+ * @param {*} dispatchDate 
+ * @param {*} dispatchHour 
+ */
 async function cancelSchedule2(number,endStation,dispatchDate,dispatchHour) {
   const changeSql = "update `station_real_data` set `stock` = `stock` - ? where `station_id` = ? and `date` = ? and `hour` = ?;"
   await db.async.run(changeSql,[number,endStation,dispatchDate,dispatchHour])
