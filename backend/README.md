@@ -38,7 +38,7 @@ backend部分 是一个基于 Node.js 的后端应用程序，旨在根据需求
 --header 'Content-Type: application/json'
 ```
 1.登陆注册
-（1）用户注册（POST）
+1.1用户注册（POST）
 ```bash
 /admin/register
 ```
@@ -57,7 +57,7 @@ backend部分 是一个基于 Node.js 的后端应用程序，旨在根据需求
   "msg": "注册成功"
 }
 ```
-（2）用户登录（POST）
+1.2用户登录（POST）
 ```bash
 /admin/login
 ```
@@ -84,7 +84,7 @@ backend部分 是一个基于 Node.js 的后端应用程序，旨在根据需求
 }
 
 ```
-（3）重置账号（POST）
+1.3重置账号（POST）
 ```bash
 /reset/account
 ```
@@ -100,6 +100,17 @@ backend部分 是一个基于 Node.js 的后端应用程序，旨在根据需求
 {
   "code": 200, //状态码
   "msg": "账号重置成功"
+}
+```
+1.4 重置密码（POST）
+```bash
+/reset/pwd
+```
+输入格式
+```bash
+{
+  "email": "admin", 
+  "newPassword": "admin2" //新密码
 }
 ```
 2.站点位置  
