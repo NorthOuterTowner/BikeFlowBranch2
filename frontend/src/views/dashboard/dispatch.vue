@@ -141,6 +141,8 @@ async function highlightStations() {
     highlightStationList.value = stations;
     highlightStationsOnMap(stations);
     showHighlight.value = true; // 显示
+    console.log('拿到的站点：', JSON.stringify(stations, null, 2))
+
   } catch (e) {
     console.error('获取调出站点失败', e);
     highlightStationList.value = [];
@@ -503,6 +505,25 @@ async function batchCancel() {
   for (const item of items) await handleCancel(item)
 }
 
+function focusStationOnMap(station) {
+  console.log('点击了高亮站点：', station);
+
+  // Check if mapInstance is initialized and station has coordinates
+  if (mapInstance && station.lat && station.lng) {
+    const coords = fromLonLat([station.lng, station.lat]); // Convert Lon/Lat to map projection
+    console.log('将地图中心设置到坐标：', coords);
+
+    mapInstance.getView().animate({
+      center: coords,
+      zoom: 16, // You can adjust the zoom level here
+      duration: 500 // Animation duration in milliseconds
+    });
+  } else {
+    console.warn('地图未初始化或站点缺少经纬度信息。', { mapInstance, station });
+  }
+}
+
+
 </script>
 
 <template>
@@ -611,18 +632,23 @@ async function batchCancel() {
     
   </div>
 
-  <!-- 右侧地图面板 -->
   <div class="map-panel">
-    <div ref="mapContainer" class="map"></div>
-  </div>
-  <div class="highlight-info-panel" v-if="showHighlight && highlightStationList.length">
-    <h4>调出站点</h4>
-    <ul>
-      <li v-for="station in highlightStationList" :key="station.station_name">
-        {{ station.station_name }}
-      </li>
-    </ul>
-  </div>
+      <div ref="mapContainer" class="map"></div>
+    </div>
+
+    <div class="highlight-info-panel" v-if="showHighlight && highlightStationList.length">
+      <h4>调出站点</h4>
+      <ul>
+        <li
+          v-for="station in highlightStationList"
+          :key="station.station_name"
+          @click="focusStationOnMap(station)"
+          style="cursor: pointer;"
+        >
+          {{ station.station_name }}
+        </li>
+      </ul>
+    </div>
 
 </div>
   </div>
@@ -813,7 +839,7 @@ async function batchCancel() {
 }
 .highlight-info-panel {
   position: absolute;
-  top: 10px;
+  top: 70px;
   right: 10px;
   width: 220px;
   max-height: 300px;
