@@ -7,6 +7,10 @@ from stgcn_model import STGCN
 from torch_geometric.utils import dense_to_sparse
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 import matplotlib.pyplot as plt
+import matplotlib
+# 设置支持中文的字体（Windows 常用字体）
+matplotlib.rcParams['font.sans-serif'] = ['SimHei']  # 使用黑体
+matplotlib.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
 from datetime import datetime
 
 # 参数
@@ -29,6 +33,26 @@ Y_test = torch.tensor(Y_test, dtype=torch.float32).permute(0, 3, 2, 1).to(device
 
 # 加载小时和星期索引
 sample_times = json.load(open('./handle/forecast/all_times.json', 'r', encoding='utf-8'))
+from collections import Counter
+import matplotlib.pyplot as plt
+
+# 提取训练集样本时间
+train_sample_times = sample_times[:data['X_train'].shape[0]]
+train_hours = [datetime.strptime(t, '%Y-%m-%d %H:%M:%S').hour for t in train_sample_times]
+
+# 统计每个小时出现次数
+hour_counts = Counter(train_hours)
+
+# 可视化
+plt.figure(figsize=(10, 5))
+plt.bar(hour_counts.keys(), hour_counts.values(), color='skyblue')
+plt.xlabel("小时 (0-23)")
+plt.ylabel("训练集中样本数量")
+plt.title("训练集中每小时的样本分布")
+plt.grid(True)
+plt.savefig("train_hour_distribution.png")
+plt.show()
+
 val_start = data['X_train'].shape[0]
 val_end = val_start + X_val.shape[0]
 test_end = val_end + X_test.shape[0]
@@ -108,21 +132,48 @@ def evaluate(model, X, Y, hours, days, name='验证集', batch_size=8):
     print(f"  MSE  : {mse:.4f}")
     
     # 计算各站点预测差异
-    station_diff = np.std(pred, axis=(0,1))  # [node, feature]
+    station_diff = np.std(pred, axis=(0, 1))  # [node, feature]
     print("\n各站点预测差异统计:")
     print(f"平均标准差 - 流入: {np.mean(station_diff[:,0]):.4f}")
     print(f"平均标准差 - 流出: {np.mean(station_diff[:,1]):.4f}")
     
+    # 打印数据形状和样本值
+    print(f"{name} pred shape: {pred.shape}")
+    print(f"{name} true shape: {true.shape}")
+    
     # 可视化
     for station_idx in range(min(5, num_nodes)):
-        plt.figure(figsize=(10, 5))
-        plt.plot(pred[0, :, station_idx, 0], label='Pred Inflow')
-        plt.plot(true[0, :, station_idx, 0], label='True Inflow')
-        #plt.title(f'Station {station_ids[station_idx]} Inflow')
-        plt.xlabel('Time Steps')
-        plt.ylabel('Flow')
-        plt.legend()
-        plt.show()
+        # 打印样本数据以调试
+        print(f"Station {station_idx} pred sample: {pred[:10, 0, station_idx, 0]}")  # 打印前10个样本
+        print(f"Station {station_idx} true sample: {true[:10, 0, station_idx, 0]}")
+        
+    # ==========================
+    # 按时间点画所有站点的预测 vs 真实值
+    # ==========================
+    selected_time_index = 0  # 选择第几个时间点（0表示第一小时）
+    selected_sample_index =9   # 选择第几个样本（一天内的哪一个时间片）
+
+    # ===== 多站点流入图（带连线） =====
+    pred_inflow = pred[selected_sample_index, selected_time_index, :, 0]
+    true_inflow = true[selected_sample_index, selected_time_index, :, 0]
+
+    plt.figure(figsize=(12, 6))
+    x = range(num_nodes)
+
+    # 折线
+    plt.plot(x, true_inflow, color='red', linestyle='-', marker='x', label='True Inflow')
+    plt.plot(x, pred_inflow, color='blue', linestyle='-', marker='o', label='Pred Inflow')
+
+    plt.xlabel('站点编号')
+    plt.ylabel('流入量')
+    plt.title(f'{name} - 第{selected_sample_index}个样本 / 时间步{selected_time_index}的多站点流入预测对比')
+    plt.legend()
+    plt.grid(True)
+    plt.savefig(f'multi_station_inflow_{name}_sample{selected_sample_index}_t{selected_time_index}.png')
+    plt.show()
+    plt.close()
+
+
 # 执行评估
 evaluate(model, X_val, Y_val, val_hours, val_days, name="验证集", batch_size=8)
 evaluate(model, X_test, Y_test, test_hours, test_days, name="测试集", batch_size=8)
