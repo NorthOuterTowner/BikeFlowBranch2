@@ -36,6 +36,11 @@ let mapInstance = null // OpenLayers 地图实例
 let vectorLayer = null // 用于绘制调度方案要素的矢量图层
 let popupOverlay; // 保存 overlay
 
+// OpenRouteService API 配置
+const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImE0ZjM4NDNiZmE3NDQ0YTM4MmNhNmEyMWM4NWUxYjU0IiwiaCI6Im11cm11cjY0In0='
+const ORS_BASE_URL = 'https://api.openrouteservice.org/v2'
+
+
 const welcoming = ref('管理员，欢迎您！') // 欢迎信息
 const fixedDate = computed(() => {
   // 获取固定日期，优先从 localStorage 取，否则取当前日期
