@@ -469,8 +469,8 @@ const filteredDispatchList = computed(() => {
 async function handleStart(item) {
   try {
     await startDispatch({
-      startStation: item.start_station.name,
-      endStation: item.end_station.name,
+      startStation: item.start_station.id,
+      endStation: item.end_station.id,
       number: item.bikes_to_move,
       dispatchDate: lookup_date.value,
       dispatchHour: lookup_hour.value,
@@ -486,8 +486,8 @@ async function handleStart(item) {
 async function handleCancel(item) {
   try {
     await cancelDispatch({
-      startStation: item.start_station.name,
-      endStation: item.end_station.name,
+      startStation: item.start_station.id,
+      endStation: item.end_station.id,
       number: item.bikes_to_move,
       dispatchDate: lookup_date.value,
       dispatchHour: lookup_hour.value,
@@ -605,7 +605,7 @@ function focusStationOnMap(station) {
       <td>
         <input type="checkbox" v-model="selectedIds" :value="item.schedule_id" @click.stop />
       </td>
-      <td>{{ item.start_station.name }} → {{ item.end_station.name }}</td>
+      <td>{{ item.start_station.id }} → {{ item.end_station.id }}</td>
 
       <!-- 状态：加圆角彩色标签 -->
       <td>
