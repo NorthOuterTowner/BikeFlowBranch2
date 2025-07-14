@@ -366,7 +366,7 @@ async function toggleDispatchLayerWithAPI() {
     // 显示调度图层
     if (dispatchPlans.value.length === 0) {
       // 构建查询时间
-      const queryTime = buildQueryTime(fixedDate.value, '9：00')
+      const queryTime = buildQueryTime(fixedDate.value, '09:00')
       
       // 获取真实的调度方案数据
       await fetchDispatchPlans(queryTime)
@@ -489,7 +489,6 @@ function createArrowHeadStyle(endCoordinate, rotation, color = '#ff6b35') {
 function calculateAngle(start, end) {
   const dx = end[0] - start[0]
   const dy = end[1] - start[1]
-  // 修改：使用Math.atan2计算从起点到终点的角度
   return Math.atan2(dy, dx)
 }
 
