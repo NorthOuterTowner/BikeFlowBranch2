@@ -33,7 +33,7 @@ export function useStationMap() {
       layers: [ new TileLayer({ source: new OSM() }) ],
       view: new View({
         center: fromLonLat([-74.0576, 40.7312]),
-        zoom: 11,
+        zoom: 14,
         maxZoom: 20,
         minZoom: 3
       }),
