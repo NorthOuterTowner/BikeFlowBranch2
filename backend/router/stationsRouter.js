@@ -25,8 +25,8 @@ router.get('/locations', authMiddleware, async (req, res) => {
         SELECT
             station_id,
             station_name,
-            lat,
-            lng,
+            lat AS latitude,
+            lng AS longitude,
             capacity
         FROM
             station_info
