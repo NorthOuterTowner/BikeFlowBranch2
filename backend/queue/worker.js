@@ -49,7 +49,11 @@ dispatchQueue.process(async (job) => {
  */
 async function afterTimeSchedule2(number,endStation,dispatchDate,dispatchHour) {
   const changeSql = "update `station_real_data` set `stock` = `stock` + ? where `station_id` = ? and `date` = ? and `hour` = ?;"
-  await db.async.run(changeSql,[number,endStation,dispatchDate,dispatchHour])
+  try{
+    await db.async.run(changeSql,[number,endStation,dispatchDate,dispatchHour])
+  }catch(err){
+    console.log(err)
+  }
 }
 
 /**
@@ -61,7 +65,11 @@ async function afterTimeSchedule2(number,endStation,dispatchDate,dispatchHour) {
  */
 async function cancelSchedule(number,startStation,dispatchDate,dispatchHour) {
   const changeSql = "update `station_real_data` set `stock` = `stock` + ? where `station_id` = ? and `date` = ? and `hour` = ?;"
-  await db.async.run(changeSql,[number,startStation,dispatchDate,dispatchHour])
+  try{
+    await db.async.run(changeSql,[number,startStation,dispatchDate,dispatchHour])
+  }catch(err){
+    console.log(err)
+  }
 }
 
 /**
@@ -73,5 +81,9 @@ async function cancelSchedule(number,startStation,dispatchDate,dispatchHour) {
  */
 async function cancelSchedule2(number,endStation,dispatchDate,dispatchHour) {
   const changeSql = "update `station_real_data` set `stock` = `stock` - ? where `station_id` = ? and `date` = ? and `hour` = ?;"
-  await db.async.run(changeSql,[number,endStation,dispatchDate,dispatchHour])
+  try{
+    await db.async.run(changeSql,[number,endStation,dispatchDate,dispatchHour])
+  }catch(err){
+    console.log(err)
+  }
 }
