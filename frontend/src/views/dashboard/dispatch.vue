@@ -17,7 +17,6 @@ import request from '@/api/axios' // Axios 请求实例
 import { startDispatch,cancelDispatch, getStationAssign, getDispatch } from '../../api/axios'
 import Overlay from 'ol/Overlay'
 
-
 // ==================== 工具&响应式数据 ====================
 const mapStatus = (statusInt) => {
   const s = Number(statusInt)
@@ -28,7 +27,19 @@ const mapStatus = (statusInt) => {
     default: return '未知';
   }
 }
-
+// 站点名称映射函数 - 根据站点ID获取显示名称(假的...)
+const getStationDisplayName = (station) => {
+  if (!station) return '未知站点'
+  
+  // 优先使用 name 字段
+  if (station.name) return station.name
+  
+  // 其次使用 station_name 字段
+  if (station.station_name) return station.station_name
+  
+  // 最后使用 id 作为显示名称
+  return station.id || '未知站点'
+}
 
 const router = useRouter() // Vue Router 实例
 const mapContainer = ref(null) // 地图容器的引用
@@ -48,7 +59,7 @@ const fixedDate = computed(() => {
 })
 const currentHour = getCurrentHourString() // 获取当前小时字符串
 
-const now = new Date().toISOString()
+//const now = new Date().toISOString()
 const lookup_date = ref('2025-06-13')
 const lookup_hour = ref(9)
 
@@ -367,19 +378,19 @@ function highlightStationsOnMap(stations) {
 function drawDispatchPlanOnMap(plan) {
   console.log('绘制 item:', plan)
 
-  const startLng = parseFloat(plan.start_station.lng)
-  const startLat = parseFloat(plan.start_station.lat)
-  const endLng = parseFloat(plan.end_station.lng)
-  const endLat = parseFloat(plan.end_station.lat)
+  // const startLng = parseFloat(plan.start_station.lng)
+  // const startLat = parseFloat(plan.start_station.lat)
+  // const endLng = parseFloat(plan.end_station.lng)
+  // const endLat = parseFloat(plan.end_station.lat)
 
-  console.log('绘制用的 startLng, startLat:', startLng, startLat)
-  console.log('绘制用的 endLng, endLat:', endLng, endLat)
+  // console.log('绘制用的 startLng, startLat:', startLng, startLat)
+  // console.log('绘制用的 endLng, endLat:', endLng, endLat)
 
-  const startCoord = fromLonLat([startLng, startLat])
-  const endCoord = fromLonLat([endLng, endLat])
+  // const startCoord = fromLonLat([startLng, startLat])
+  // const endCoord = fromLonLat([endLng, endLat])
 
-  console.log('绘制用的转换后 startCoord:', startCoord)
-  console.log('绘制用的转换后 endCoord:', endCoord)
+  // console.log('绘制用的转换后 startCoord:', startCoord)
+  // console.log('绘制用的转换后 endCoord:', endCoord)
 
   if (!vectorLayer) {
     console.warn('矢量图层未初始化。')
@@ -413,14 +424,14 @@ function drawDispatchPlanOnMap(plan) {
         fromLonLat([item.end_station.lng, item.end_station.lat])
       ])
     })
-        // startFeature
-    console.log('startFeature geometry:', startFeature.getGeometry().getCoordinates())
+    //     // startFeature
+    // console.log('startFeature geometry:', startFeature.getGeometry().getCoordinates())
 
-    // endFeature
-    console.log('endFeature geometry:', endFeature.getGeometry().getCoordinates())
+    // // endFeature
+    // console.log('endFeature geometry:', endFeature.getGeometry().getCoordinates())
 
-    // lineFeature
-    console.log('lineFeature geometry:', lineFeature.getGeometry().getCoordinates())
+    // // lineFeature
+    // console.log('lineFeature geometry:', lineFeature.getGeometry().getCoordinates())
 
     // 如果是选中的方案，线条样式更粗/颜色不同
     if (selectedPlan.value && selectedPlan.value.schedule_id === item.schedule_id) {
@@ -442,12 +453,9 @@ function drawDispatchPlanOnMap(plan) {
     mapInstance.getView().fit(extent, { padding: [50,50,50,50], duration: 1000, maxZoom: 16 })
   }
 
-  console.log('=== 准备添加要素 ===')
-  console.log('当前 view center:', mapInstance.getView().getCenter())
-console.log('当前 zoom:', mapInstance.getView().getZoom())
-
-
-
+//   console.log('=== 准备添加要素 ===')
+//   console.log('当前 view center:', mapInstance.getView().getCenter())
+// console.log('当前 zoom:', mapInstance.getView().getZoom())
 }
 
 /**
@@ -458,38 +466,38 @@ const selectPlan = (plan) => {
   drawDispatchPlanOnMap(plan)
 
   if (plan.start_station && plan.end_station) {
-    console.log('--- 选中的调度方案 ---')
-    console.log('start_station:', plan.start_station)
-    console.log('end_station:', plan.end_station)
+    // console.log('--- 选中的调度方案 ---')
+    // console.log('start_station:', plan.start_station)
+    // console.log('end_station:', plan.end_station)
 
     const startLng = parseFloat(plan.start_station.lng)
     const startLat = parseFloat(plan.start_station.lat)
     const endLng = parseFloat(plan.end_station.lng)
     const endLat = parseFloat(plan.end_station.lat)
 
-    console.log('原始坐标：')
-    console.log('Start:', startLng, startLat)
-    console.log('End:', endLng, endLat)
+    // console.log('原始坐标：')
+    // console.log('Start:', startLng, startLat)
+    // console.log('End:', endLng, endLat)
 
     const start = fromLonLat([startLng, startLat])
     const end = fromLonLat([endLng, endLat])
 
-    console.log('转换后的坐标：')
-    console.log('Start:', start)
-    console.log('End:', end)
+    // console.log('转换后的坐标：')
+    // console.log('Start:', start)
+    // console.log('End:', end)
 
     // 创建临时 LineString
     const tempLine = new LineString([start, end])
     const extent = tempLine.getExtent()
 
-    console.log('计算出的 extent:', extent)
+    //console.log('计算出的 extent:', extent)
 
-    // 也算一下简单的中心点
-    const center = [
-      (start[0] + end[0]) / 2,
-      (start[1] + end[1]) / 2
-    ]
-    console.log('简单中心点:', center)
+    // // 也算一下简单的中心点
+    // const center = [
+    //   (start[0] + end[0]) / 2,
+    //   (start[1] + end[1]) / 2
+    // ]
+    // console.log('简单中心点:', center)
 
     // 用 fit
     mapInstance.getView().fit(extent, {
@@ -497,7 +505,7 @@ const selectPlan = (plan) => {
       duration: 500,
       maxZoom: 16
     })
-    console.log('执行 fit 到 extent')
+    //console.log('执行 fit 到 extent')
   } else {
     console.warn('plan.start_station 或 plan.end_station 不存在！')
   }
@@ -582,7 +590,7 @@ async function fetchDispatch() {
   try {
     const res = await getDispatch('2025-06-13T09:00:00Z')
     console.log('后端返回数据：', res.data)
-
+    
     if (!res.data || typeof res.data !== 'object') {
       console.error('接口返回不是 JSON：', res.data)
       return
@@ -602,11 +610,12 @@ async function fetchDispatch() {
 
     allDispatchList.value = schedules.map(item => ({
       ...item,
-      //start_station_name: item.start_station?.name || '',
-      //end_station_name: item.end_station?.name || '',
+      start_station_name: getStationDisplayName(item.start_station),
+      end_station_name: getStationDisplayName(item.end_station),
       statusInt: item.status,
-      //status: mapStatus(Number(item.status))
+      status: mapStatus(item.status)
     }))
+    console.log('处理后的调度列表:', allDispatchList.value)
   } catch (e) {
     console.error('获取调度数据失败', e)
   }
@@ -806,15 +815,8 @@ function focusStationOnMap(station) {
             </tr>
           </tbody>
         </table>
+    </div>
 
-
-
-    
-  </div>
-
-  <!-- <div class="map-panel">
-      <div ref="mapContainer" class="map"></div>
-    </div> -->
 
     <div class="highlight-info-panel" v-if="showHighlight && highlightStationList.length">
       <h4>调出站点</h4>
