@@ -24,20 +24,20 @@ router.post('/account',authMiddleware,async (req, res) => {
     if(err == null && rows[0].cnt == 0){
         const sql2 = 'update `admin` set `account` = ? where `account` = ?'
         await db.async.run(sql2,[newName,oldName])
-        res.status(200).send({
+        return res.status(200).send({
             status:200,
             newName,
             msg:"用户名重置成功"
         })
     }else if (rows[0].cnt > 0){
         //用户名已存在
-        res.status(500).send({
+        return res.status(500).send({
             status:500,
             newName,
             msg:"用户名已存在"
         })
     }else{
-        res.status(500).send({
+        return res.status(500).send({
             status:500,
             newName,
             msg:"服务器错误"
@@ -121,13 +121,13 @@ router.post('/pwd', authMiddleware, async (req, res) => {
       html: htmlContent
     });
 
-    res.status(200).send({ 
+    return res.status(200).send({ 
       code: 200, 
       msg: "重置验证邮件已发送，请查收邮箱" 
     });
 
   } catch (e) {
-    res.status(500).send({ 
+    return res.status(500).send({ 
       code: 500, 
       msg: "服务器内部错误", 
       error: e.message 
@@ -168,13 +168,13 @@ router.get('/verify', async (req, res) => {
 
     await redisClient.del(`reset-password:${code}`);
 
-    res.status(200).send({
+    return res.status(200).send({
       code: 200,
       msg: "密码重置成功"
     });
 
   } catch (e) {
-    res.status(500).send({ 
+    return res.status(500).send({ 
       code: 500, 
       msg: "重置失败", 
       error: e.message 

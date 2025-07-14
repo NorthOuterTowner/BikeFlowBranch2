@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { db } = require('../db/dbUtils');
 
-const sequelize = require('../orm/sequelize'); // 确保路径正确
+const sequelize = require('../orm/sequelize');
 const { DataTypes } = require('sequelize')
 const StationModel = require('../orm/models/Station');
 const Station = StationModel(sequelize,DataTypes)
@@ -13,6 +13,11 @@ const ScheduleModel = require('../orm/models/stationSchedule');
 const InfoModel = require('../orm/models/Station');
 const StationSchedule = ScheduleModel(sequelize,DataTypes);
 const StationInfo = InfoModel(sequelize,DataTypes);
+
+const redis = require("redis");
+const redisClient = require("../db/redis");
+
+const dispatchQueue = require("../queue/dispatchQueue");
 
 /**
  * @api {post} /change 执行调度
@@ -40,74 +45,176 @@ const StationInfo = InfoModel(sequelize,DataTypes);
  * @apiError (500) {String} error 服务器错误提示，如"调度失败"。
  */
 router.post('/change', authMiddleware, async (req, res) => {
-    let { startStation,endStation,number,dispatchDate, dispatchHour,dispatchId } = req.body
-    
-    const queryStartsql = "select 1 from `station_real_data` where `station_id` = ? "
-    const queryEndSql = "select 1 from `station_real_data` where `station_id` = ? "
-    
-    let {err:startErr,rows:startRows} = await db.async.all(queryStartsql,[startStation])
-    let {err:endErr,rows:endRows} = await db.async.all(queryEndSql,[endStation])
+  let { startStation,endStation,number,dispatchDate, dispatchHour,dispatchId } = req.body
+  
+  const queryStartsql = "select 1 from `station_real_data` where `station_id` = ? "
+  const queryEndSql = "select 1 from `station_real_data` where `station_id` = ? "
+  
+  let {err:startErr,rows:startRows} = await db.async.all(queryStartsql,[startStation])
+  let {err:endErr,rows:endRows} = await db.async.all(queryEndSql,[endStation])
 
-    if(startErr == null && endErr == null && startRows.length > 0 && endRows.length > 0){
-        let changeableStock = 0
-        const getStockSql = "select `stock` from `station_real_data` where `station_id` = ? and `date` = ? and `hour` = ? "
-        let {err:searchErr,rows:searchRows} = await db.async.all(getStockSql,[startStation,dispatchDate,dispatchHour]) 
-        console.log(searchRows)
-        changeableStock = searchRows[0].stock
+  if(startErr == null && endErr == null && startRows.length > 0 && endRows.length > 0){
+    let changeableStock = 0
+    const getStockSql = "select `stock` from `station_real_data` where `station_id` = ? and `date` = ? and `hour` = ? "
+    let {err:searchErr,rows:searchRows} = await db.async.all(getStockSql,[startStation,dispatchDate,dispatchHour]) 
+    console.log(searchRows)
+    changeableStock = searchRows[0].stock
 
-        if(changeableStock < number){
-            res.status(422).send({//语义错误
-                code:422,
-                error:"该调度方案不可行，调度数量超过本站点车余量"
-            })
-        }else{
-          
-            const changeSql = "update `station_real_data` set `stock` = `stock` - ? where `station_id` = ? and `date` = ? and `hour` = ?;"
-            const changeSql2 = "update `station_real_data` set `stock` = `stock` + ? where `station_id` = ? and `date` = ? and `hour` = ?;"
-            
-            await db.async.run(changeSql,[number,startStation,dispatchDate,dispatchHour])
-            
-            let {lat:startLat,lng:startLng} = await getStationCoordinates(startStation)
-            let {lat:endLat,lng:endLng} = await getStationCoordinates(endStation)
-
-            const distance = calcLength(startLat,startLng,endLat,endLng)
-
-            let time = (distance/1000/20)*60*60*1000
-
-            //change status of dispatch
-            const statusSql = "update `station_schedule` set `status` = 1 where `id` = ? ;"
-            await db.async.run(statusSql,[dispatchId])
-
-            setTimeout(async()=>{
-                await db.async.run(changeSql2,[number,endStation,dispatchDate,dispatchHour])
-                const finishStatusSql = "update `station_schedule` set `status` = 2 where `id` = ?;"
-                await db.async.run(finishStatusSql,[dispatchId])
-            },time)
-
-            dispatchHour+=1;
-            while(dispatchHour<=23){
-              afterTimeSchedule(number,startStation,endStation,dispatchDate,dispatchHour);
-              dispatchHour++;
-            }
-
-            res.status(200).send({
-                code:200,
-                msg:"开始进行调度"
-            })
-        }  
+    if(changeableStock < number){
+        return res.status(422).send({//语义错误
+            code:422,
+            error:"该调度方案不可行，调度数量超过本站点车余量"
+        })
     }else{
-        if(startRows.length == 0 || endRows.length == 0){
-            res.status(400).send({//客户端参数错误
-                code:400,
-                error:"无效站点"
-            })
-        }else{
-            res.status(500).send({
-                code:500,
-                error:"调度失败"
-            })
-        }
+      
+      let {lat:startLat,lng:startLng} = await getStationCoordinates(startStation)
+      let {lat:endLat,lng:endLng} = await getStationCoordinates(endStation)
+
+      const distance = calcLength(startLat,startLng,endLat,endLng)
+
+      let time = (distance/1000/20)*60*60*1000
+      console.log(time)
+      //change status of dispatch
+      const statusSql = "update `station_schedule` set `status` = 1 where `id` = ? ;"
+      await db.async.run(statusSql,[dispatchId])
+
+      let dispatchHourInt=parseInt(dispatchHour);
+      while(dispatchHourInt <= 23){
+        await afterTimeSchedule(number,startStation,dispatchDate,dispatchHourInt);
+        dispatchHourInt+=1;
+      }
+
+      const scheduleKey = `dispatch:${dispatchId}`;
+      const startTime = Date.now(); // 当前时间 + 延迟时间
+
+      await redisClient.hSet(scheduleKey, "startTime", startTime);
+      await redisClient.hSet(scheduleKey, "calcDelay", time);
+
+      let expireTime = parseInt(time/1000)
+      await redisClient.expire(scheduleKey, expireTime);
+
+      await dispatchQueue.add(
+          {
+            type:"dispatch",
+            number,
+            startStation,
+            endStation,
+            dispatchDate,
+            dispatchHour,
+            dispatchId
+          },{
+            delay: time,
+            attempts:3
+          }
+        );
+
+      res.status(200).send({
+          code:200,
+          msg:"开始进行调度"
+      })
+    }  
+  }else{
+      if(startRows.length == 0 || endRows.length == 0){
+          res.status(400).send({//客户端参数错误
+              code:400,
+              error:"无效站点"
+          })
+      }else{
+          res.status(500).send({
+              code:500,
+              error:"调度失败"
+          })
+      }
+  }
+});
+
+/**
+ * @api {post} /cancelChange Cancel Bike Dispatch
+ * 
+ * @apiDescription Cancels a bike dispatch between two stations and schedules return trips.
+ *
+ * @apiBody {String} startStation ID of the starting station
+ * @apiBody {String} endStation ID of the destination station
+ * @apiBody {Number} number Number of bikes being dispatched
+ * @apiBody {String} dispatchDate Date of dispatch (YYYY-MM-DD format)
+ * @apiBody {Number} dispatchHour Hour of dispatch (0-23)
+ * @apiBody {String} dispatchId Unique ID of the dispatch
+ *
+ * @apiSuccess {Number} code HTTP status code (200)
+ * @apiSuccess {String} msg Success message
+ *
+ * @apiError {Number} code HTTP status code (400)
+ * @apiError {String} msg Error message when stations don't exist
+ *
+ * @apiError {Number} code HTTP status code (500)
+ * @apiError {String} msg Internal server error
+ */
+router.post('/cancelChange',authMiddleware, async (req,res) => {
+  let { startStation,endStation,number,dispatchDate, dispatchHour,dispatchId } = req.body
+  
+  const queryStartsql = "select 1 from `station_real_data` where `station_id` = ? "
+  const queryEndSql = "select 1 from `station_real_data` where `station_id` = ? "
+  
+  let {err:startErr,rows:startRows} = await db.async.all(queryStartsql,[startStation])
+  let {err:endErr,rows:endRows} = await db.async.all(queryEndSql,[endStation])
+
+  if(startErr == null && endErr == null && startRows.length > 0 && endRows.length > 0){
+  
+    let {lat:startLat,lng:startLng} = await getStationCoordinates(startStation)
+    let {lat:endLat,lng:endLng} = await getStationCoordinates(endStation)
+
+    const distance = calcLength(startLat,startLng,endLat,endLng)
+
+    let time = (distance/1000/20)*60*60*1000
+
+    dispatchHour=parseInt(dispatchHour);
+    
+    const scheduleKey = `dispatch:${dispatchId}`;
+    let startTime, calcDelay;
+    const result = await redisClient.hGetAll(scheduleKey);
+
+    if (Object.keys(result).length === 0) {
+      console.log("没有找到对应的调度任务");
+    } else {
+      startTime = result.startTime
+      calcDelay = result.calcDelay
+
+      await redisClient.del(scheduleKey);
     }
+    await dispatchQueue.add(
+        {
+          type:"cancelStart",
+          number,
+          startStation,
+          endStation,
+          dispatchDate,
+          dispatchHour,
+          dispatchId
+        },{
+          delay: (Date.now() - startTime),
+          attempts:3
+        }
+      );
+
+    await dispatchQueue.add(
+        {
+          type:"cancelEnd",
+          number,
+          startStation,
+          endStation,
+          dispatchDate,
+          dispatchHour,
+          dispatchId
+        },{
+          delay: time - (Date.now() - startTime),
+          attempts:3
+        }
+      );
+    res.status(200).send({
+        code:200,
+        msg:"开始返回调度"
+    })
+  }
 });
 
 /**
@@ -180,7 +287,7 @@ StationSchedule.belongsTo(StationInfo, { foreignKey: 'end_id', as: 'endStation' 
  * @apiDescription 接收一个具体时间，查询该日期、该（向前取整）小时的所有已规划调度任务。
  * @apiParam {String} query_time ISO 8601 格式的查询时间 (e.g., "2025-06-13T09:45:00Z").
  */
-router.get('/', async (req, res) => {
+router.get('/',authMiddleware, async (req, res) => {
     const { query_time } = req.query;
 
     if (!query_time) {
@@ -269,22 +376,6 @@ const toYYYYMMDD = (date) => {
 };
 
 /**
- * 递归进行更改，将调度时间之后的所有时间对应余量均进行更改
- * @param {*} number 
- * @param {*} startStation 
- * @param {*} endStation 
- * @param {*} dispatchDate 
- * @param {*} dispatchHour 
- */
-async function afterTimeSchedule(number,startStation,endStation,dispatchDate,dispatchHour){
-  const changeSql = "update `station_real_data` set `stock` = `stock` - ? where `station_id` = ? and `date` = ? and `hour` = ?;"
-  const changeSql2 = "update `station_real_data` set `stock` = `stock` + ? where `station_id` = ? and `date` = ? and `hour` = ?;"
-  await db.async.run(changeSql,[number,startStation,dispatchDate,dispatchHour])
-  await db.async.run(changeSql2,[number,endStation,dispatchDate,dispatchHour])
-}
-
-
-/**
  * @api {post} /reject 管理员拒绝该调度请求
  * @apiDescription 管理员通过调度ID拒绝该调度请求，只有状态为0（未使用）的调度可以被拒绝，拒绝后状态变为-1。
  *
@@ -340,5 +431,106 @@ router.post('/reject',authMiddleware, async (req,res)=>{
     }
   }
 })
+
+/**
+ * @api {get} /api/v1/schedules/by-station 按站点和时间查询调度任务
+ * @apiDescription 查询特定站点在指定时间所属的3小时周期内的所有相关任务。
+ * @apiParam {String} station_id 站点的ID。
+ * @apiParam {String} query_time ISO 8601 格式的查询时间。
+ * @apiParam {String} [role] 可选, 站点的角色 ('start' 或 'end')。
+ */
+router.get('/by-station',authMiddleware, async (req, res) => {
+    const { station_id, query_time, role } = req.query;
+
+    // 1. 参数校验
+    if (!station_id || !query_time) {
+        return res.status(400).json({ error: 'Missing required parameters: station_id and query_time.' });
+    }
+    if (role && !['start', 'end'].includes(role)) {
+        return res.status(400).json({ error: "Invalid role parameter. Allowed values are 'start' or 'end'." });
+    }
+
+    try {
+        const queryDate = new Date(query_time);
+        if (isNaN(queryDate.getTime())) {
+            return res.status(400).json({ error: 'Invalid query_time format. Please use ISO 8601 format.' });
+        }
+
+        // (可选但推荐) 校验站点是否存在
+        const stationExists = await StationInfo.findByPk(station_id);
+        if (!stationExists) {
+            return res.status(404).json({ error: `Station with ID ${station_id} not found.` });
+        }
+
+        // 2. 动态构建查询条件 (合并时间和站点逻辑)
+        const dateForQuery = toYYYYMMDD(queryDate);
+        const originalHour = queryDate.getUTCHours();
+        const hourForQuery = Math.floor(originalHour / 3) * 3;
+
+        let whereClause = {
+            date: dateForQuery,
+            hour: hourForQuery
+        };
+
+        if (role === 'start') {
+            whereClause.start_id = station_id;
+        } else if (role === 'end') {
+            whereClause.end_id = station_id;
+        } else {
+            whereClause[Op.or] = [
+                { start_id: station_id },
+                { end_id: station_id }
+            ];
+        }
+
+        // 3. 执行查询
+        const schedules = await StationSchedule.findAll({
+            where: whereClause,
+            include: [
+                { model: StationInfo, as: 'startStation', attributes: ['station_id', 'station_name', 'lat', 'lng'] },
+                { model: StationInfo, as: 'endStation', attributes: ['station_id', 'station_name', 'lat', 'lng'] }
+            ],
+            order: [['id', 'ASC']],
+            attributes: { exclude: ['start_id', 'end_id'] }
+        });
+
+        // 4. 格式化响应
+        const formattedSchedules = schedules.map(schedule => ({
+            schedule_id: schedule.id,
+            bikes_to_move: schedule.bikes,
+            status: mapScheduleStatus(schedule.status),
+            start_station: schedule.startStation ? {
+                id: schedule.startStation.station_id,
+                name: schedule.startStation.station_name,
+                lat: schedule.startStation.lat,
+                lng: schedule.startStation.lng
+            } : null,
+            end_station: schedule.endStation ? {
+                id: schedule.endStation.station_id,
+                name: schedule.endStation.station_name,
+                lat: schedule.endStation.lat,
+                lng: schedule.endStation.lng
+            } : null,
+            updated_at: schedule.updated_at
+        }));
+
+        res.json({
+            lookup_date: dateForQuery,
+            lookup_hour: hourForQuery,
+            station_id: station_id,
+            role_filter: role || 'all',
+            schedules: formattedSchedules
+        });
+
+    } catch (err) {
+        console.error('Schedule by Station & Time Lookup API Error:', err);
+        res.status(500).json({ error: 'An internal server error occurred.' });
+    }
+});
+
+async function afterTimeSchedule(number,startStation,dispatchDate,dispatchHour){
+  const changeSql = "update `station_real_data` set `stock` = `stock` - ? where `station_id` = ? and `date` = ? and `hour` = ?;"
+  await db.async.run(changeSql,[number,startStation,dispatchDate,dispatchHour])
+}
 
 module.exports = router;

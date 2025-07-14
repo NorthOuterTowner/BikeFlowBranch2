@@ -7,6 +7,8 @@ const {db,genid} = require("./db/dbUtils")
 const redis = require("redis")
 const redisClient = require("./db/redis")
 
+require("./queue/worker.js")
+
 const sequelize = require('./orm/sequelize');
 const path = require('path');
 
@@ -14,10 +16,10 @@ app.set('view engine','ejs');
 app.set('views',path.join(__dirname,'views'));
 
 /* 🌟 全局打印收到的所有请求 */
-app.use((req, res, next) => {
+/*app.use((req, res, next) => {
   console.log(`请求路径: ${req.method} ${req.originalUrl}`)
   next()
-})
+})*/
 
 /* API rate limit */
 const limiter = rateLimit({
@@ -53,7 +55,7 @@ app.use("/stations",require("./router/stationsRouter"));
 app.use("/predict",require("./router/predictRouter"));
 app.use("/dispatch",require("./router/dispatch"));
 app.use("/schedule", require("./router/schedule"));
-
+app.use("/search",require("./router/search"));
 
 app.listen(PORT,'0.0.0.0', () => {
   console.log(`Server is running on port ${PORT}`);

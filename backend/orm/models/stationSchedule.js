@@ -56,7 +56,7 @@ module.exports = (sequelize,DataTypes) => {
     tableName: 'station_schedule',
     charset: 'utf8mb4',
     collate: 'utf8mb4_general_ci',
-    timestamps: true,
+    timestamps: false,
     createdAt: false,
     updatedAt: 'updated_at',
     underscored: true,

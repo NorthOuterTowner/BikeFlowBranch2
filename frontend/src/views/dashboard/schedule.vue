@@ -46,10 +46,392 @@ const fixedDate = computed(() => {
 })
 const currentHour = getCurrentHourString()
 
+// 在调度方案相关状态部分添加
+const dispatchLoading = ref(false) // 调度数据加载状态
+const dispatchError = ref(null) // 调度数据加载错误
+
 function getCurrentHourString() {
   const now = new Date()
   const hour = now.getHours().toString().padStart(2, '0')
   return `${hour}:00`
+}
+/**
+ * 获取调度方案数据
+ * @param {string} queryTime - 查询时间，ISO 8601格式
+ */
+async function fetchDispatchPlans(queryTime) { 
+  try {     
+    dispatchLoading.value = true     
+    dispatchError.value = null          
+    
+    console.log('获取调度方案数据，查询时间:', queryTime)          
+    
+    if (!queryTime || typeof queryTime !== 'string') {       
+      throw new Error('无效的查询时间格式')     
+    }          
+    
+    const response = await request.get('/dispatch', {       
+      params: {         
+        query_time: queryTime       
+      },       
+      timeout: 10000     
+    })          
+    
+    console.log('调度方案API响应:', response.data)          
+    
+    if (!response.data) {       
+      throw new Error('API响应数据为空')     
+    }          
+    
+    if (!response.data.schedules || !Array.isArray(response.data.schedules)) {       
+      console.warn('没有获取到有效的调度方案数据')       
+      dispatchPlans.value = []       
+      return []     
+    }          
+    
+    // 🔥 添加详细调试信息 - 查看第一个调度方案的数据结构     
+    if (response.data.schedules.length > 0) {       
+      console.log('第一个调度方案的数据结构:', response.data.schedules[0])       
+      console.log('所有字段名:', Object.keys(response.data.schedules[0]))     
+    }          
+    
+    // 🔥 修复验证逻辑 - 使用正确的字段名     
+    const validSchedules = response.data.schedules.filter(schedule => {       
+      // 记录每个字段的验证结果       
+      const hasStartStation = schedule.start_station !== undefined && schedule.start_station !== null       
+      const hasEndStation = schedule.end_station !== undefined && schedule.end_station !== null       
+      const hasBikesToMove = schedule.bikes_to_move !== undefined && schedule.bikes_to_move !== null  // 修复：使用正确的字段名
+      const hasScheduleId = schedule.schedule_id !== undefined && schedule.schedule_id !== null              
+      
+      console.log('验证调度方案:', {         
+        schedule_id: schedule.schedule_id,         
+        hasStartStation,         
+        hasEndStation,         
+        hasBikesToMove,         
+        hasScheduleId,         
+        start_station: schedule.start_station,         
+        end_station: schedule.end_station,         
+        bikes_to_move: schedule.bikes_to_move 
+      })              
+      
+      return hasStartStation && hasEndStation && hasBikesToMove && hasScheduleId     
+    })          
+    
+    if (validSchedules.length !== response.data.schedules.length) {       
+      console.warn(`过滤掉了 ${response.data.schedules.length - validSchedules.length} 个无效的调度方案`)     
+    }          
+    
+    // 转换调度数据格式     
+    const convertedDispatches = validSchedules.map(schedule => ({       
+      startStationId: schedule.start_station.id || schedule.start_station,       
+      endStationId: schedule.end_station.id || schedule.end_station,       
+      quantity: schedule.bikes_to_move,  // 修复：使用正确的字段名
+      scheduleId: schedule.schedule_id,       
+      status: schedule.status || '待执行',       
+      startStationName: schedule.start_station.name || schedule.start_station.id || schedule.start_station,       
+      endStationName: schedule.end_station.name || schedule.end_station.id || schedule.end_station,       
+      updatedAt: schedule.updated_at,       
+      // 添加坐标信息（如果存在）       
+      startStationLat: schedule.start_station?.lat,       
+      startStationLng: schedule.start_station?.lng,       
+      endStationLat: schedule.end_station?.lat,       
+      endStationLng: schedule.end_station?.lng     
+    }))          
+    
+    dispatchPlans.value = convertedDispatches     
+    console.log(`成功获取到 ${convertedDispatches.length} 条调度方案`)     
+    console.log('转换后的调度数据:', convertedDispatches)          
+    
+    return convertedDispatches        
+    
+  } catch (error) {     
+    console.error('获取调度方案失败:', error)     
+    // ... 错误处理代码保持不变   
+  } finally {     
+    dispatchLoading.value = false   
+  } 
+}
+
+
+/**
+ * 构建查询时间字符串
+ * @param {string} date - 日期 (YYYY-MM-DD)
+ * @param {string} hour - 小时 (HH:mm)
+ * @returns {string} ISO 8601格式的时间字符串
+ */
+function buildQueryTime(date, hour) {
+  try {
+    let hourStr = hour.toString()
+    
+    // 如果hour只是数字，转换为HH:00格式
+    if (!/\d{1,2}:\d{2}/.test(hourStr)) {
+      const hourNum = parseInt(hourStr)
+      hourStr = hourNum.toString().padStart(2, '0') + ':00'
+    }
+    
+    // 构建ISO 8601格式的时间字符串
+    const isoString = `${date}T${hourStr}:00Z`
+    
+    console.log('构建查询时间:', { date, hour, hourStr, isoString })
+    return isoString
+  } catch (error) {
+    console.error('构建查询时间失败:', error)
+    // 返回当前时间作为fallback
+    return new Date().toISOString()
+  }
+}
+/**
+ * 更新调度箭头样式创建函数，支持状态显示
+ * @param {number} quantity - 调度数量
+ * @param {string} status - 调度状态
+ * @param {string} color - 箭头颜色
+ * @returns {Style} OpenLayers样式对象
+ */
+function createDispatchArrowStyleWithStatus(quantity, status, color = '#ff6b35') {
+  // 根据状态调整颜色
+  let statusColor = color
+  switch (status) {
+    case '待执行':
+      statusColor = '#ff6b35' // 橙色
+      break
+    case '执行中':
+      statusColor = '#28a745' // 绿色
+      break
+    case '已完成':
+      statusColor = '#6c757d' // 灰色
+      break
+    case '已取消':
+      statusColor = '#dc3545' // 红色
+      break
+    default:
+      statusColor = color
+  }
+  
+  // 根据调度数量计算线条宽度 (最小2px，最大10px)
+  const lineWidth = Math.max(2, Math.min(10, quantity * 0.8))
+  
+  return new Style({
+    stroke: new Stroke({
+      color: statusColor,
+      width: lineWidth,
+      lineDash: status === '已完成' ? [5, 5] : [0] // 已完成状态使用虚线
+    }),
+    text: new Text({
+      text: `${quantity}`,
+      fill: new Fill({ color: '#ffffff' }),
+      stroke: new Stroke({ color: statusColor, width: 2 }),
+      font: 'bold 12px Arial',
+      placement: 'line',
+      textAlign: 'center',
+      offsetY: -2
+    })
+  })
+}
+
+/**
+ * 更新的添加调度方案到地图函数
+ * @param {Array} dispatches - 调度方案数组
+ */
+function addDispatchesToMapWithStatus(dispatches) {
+  if (!mapInstance || !dispatchLayer) {
+    console.warn('地图未初始化或缺少必要数据')
+    return
+  }
+
+  // 清除现有的调度箭头
+  dispatchLayer.getSource().clear()
+
+  const features = []
+
+  dispatches.forEach(dispatch => {
+    const { 
+      startStationId, 
+      endStationId, 
+      quantity, 
+      status, 
+      scheduleId, 
+      startStationName, 
+      endStationName,
+      startStationLat,
+      startStationLng,
+      endStationLat,
+      endStationLng
+    } = dispatch
+
+    // 获取站点名称的逻辑
+    let displayStartStationName = startStationName
+    let displayEndStationName = endStationName
+
+    // 如果API没有返回站点名称，从stations数组中查找
+    if (!displayStartStationName || !displayEndStationName) {
+      const startStation = stations.value.find(s => s.station_id === startStationId)
+      const endStation = stations.value.find(s => s.station_id === endStationId)
+      
+      displayStartStationName = startStation?.station_name || startStationId
+      displayEndStationName = endStation?.station_name || endStationId
+    }
+
+    // 优先使用API返回的坐标信息
+    let startCoord, endCoord
+    
+    if (startStationLat && startStationLng && endStationLat && endStationLng) {
+      // 使用API返回的坐标
+      startCoord = fromLonLat([parseFloat(startStationLng), parseFloat(startStationLat)])
+      endCoord = fromLonLat([parseFloat(endStationLng), parseFloat(endStationLat)])
+    } else {
+      // 回退到从stations数组中查找坐标
+      const startStation = stations.value.find(s => s.station_id === startStationId)
+      const endStation = stations.value.find(s => s.station_id === endStationId)
+
+      if (!startStation || !endStation) {
+        console.warn(`找不到站点坐标: ${startStationId} 或 ${endStationId}`)
+        return
+      }
+
+      startCoord = fromLonLat([parseFloat(startStation.longitude), parseFloat(startStation.latitude)])
+      endCoord = fromLonLat([parseFloat(endStation.longitude), parseFloat(endStation.latitude)])
+    }
+
+    // 创建线条要素
+    const lineFeature = new Feature({
+      geometry: new LineString([startCoord, endCoord])
+    })
+
+    // 设置线条样式（带状态）
+    const lineStyle = createDispatchArrowStyleWithStatus(quantity, status)
+    lineFeature.setStyle(lineStyle)
+
+    // 修改：设置要素属性（用于悬停提示）- 使用站点名称
+    lineFeature.set('dispatchData', {
+      startStation: displayStartStationName, // 使用站点名称而不是ID
+      endStation: displayEndStationName,     // 使用站点名称而不是ID
+      quantity: quantity,
+      status: status,
+      scheduleId: scheduleId
+    })
+
+    features.push(lineFeature)
+
+    // 创建箭头头部
+    const angle = calculateAngle(startCoord, endCoord)
+    const arrowHeadFeature = new Feature({
+      geometry: new Point(endCoord)
+    })
+    
+    // 根据状态调整箭头颜色
+    let arrowColor = '#ff6b35'
+    switch (status) {
+      case '待执行':
+        arrowColor = '#ff6b35'
+        break
+      case '执行中':
+        arrowColor = '#28a745'
+        break
+      case '已完成':
+        arrowColor = '#6c757d'
+        break
+      case '已取消':
+        arrowColor = '#dc3545'
+        break
+    }
+    
+    const arrowHeadStyle = createArrowHeadStyle(endCoord, angle, arrowColor)
+    arrowHeadFeature.setStyle(arrowHeadStyle)
+    
+    // 修改：也为箭头头部设置悬停数据 - 使用站点名称
+    arrowHeadFeature.set('dispatchData', {
+      startStation: displayStartStationName, // 使用站点名称而不是ID
+      endStation: displayEndStationName,     // 使用站点名称而不是ID
+      quantity: quantity,
+      status: status,
+      scheduleId: scheduleId
+    })
+    
+    features.push(arrowHeadFeature)
+  })
+
+  // 添加要素到图层
+  dispatchLayer.getSource().addFeatures(features)
+  console.log(`已添加 ${features.length} 个调度要素到地图`)
+}
+
+
+/**
+ * 更新的切换调度图层显示状态函数
+ */
+async function toggleDispatchLayerWithAPI() {
+  showDispatchLayer.value = !showDispatchLayer.value
+  
+  if (showDispatchLayer.value) {
+    // 显示调度图层
+    if (dispatchPlans.value.length === 0) {
+      // 构建查询时间
+      const queryTime = buildQueryTime(fixedDate.value, '9：00')
+      
+      // 获取真实的调度方案数据
+      await fetchDispatchPlans(queryTime)
+    }
+    
+    if (dispatchPlans.value.length > 0) {
+      addDispatchesToMapWithStatus(dispatchPlans.value)
+      dispatchLayer.setVisible(true)
+    } else {
+      console.warn('没有调度方案数据可显示')
+      // 检查是否有错误信息
+      if (dispatchError.value) {
+        alert(`获取调度方案失败: ${dispatchError.value}`)
+      } else {
+        alert('当前时间点没有调度方案数据')
+      }
+      showDispatchLayer.value = false
+    }
+  } else {
+    // 隐藏调度图层
+    dispatchLayer.setVisible(false)
+  }
+}
+
+/**
+ * 更新悬停提示内容显示
+ */
+function onMapHoverWithStatus(evt) {
+  if (!mapInstance) return
+  
+  const pixel = mapInstance.getEventPixel(evt.originalEvent)
+  const feature = mapInstance.forEachFeatureAtPixel(pixel, function(feature) {
+    return feature
+  })
+
+  if (feature) {
+    const station = feature.get('stationData')
+    const dispatchData = feature.get('dispatchData')
+    
+    if (station) {
+      // 显示站点悬停提示
+      const status = stationStatusMap.value[station.station_id] || {}
+      const bikeNum = status.stock ?? 0
+      tooltipContent.value = `${station.station_name || station.station_id} (${bikeNum}辆)`
+      tooltipPosition.value = {
+        x: evt.originalEvent.clientX + 10,
+        y: evt.originalEvent.clientY - 10
+      }
+      showTooltip.value = true
+      mapInstance.getTargetElement().style.cursor = 'pointer'
+    } else if (dispatchData) {
+      // 修改：显示调度信息悬停提示 - 使用站点名称
+      tooltipContent.value = `调度#${dispatchData.scheduleId}: ${dispatchData.startStation} → ${dispatchData.endStation} (${dispatchData.quantity}辆) - ${dispatchData.status}`
+      tooltipPosition.value = {
+        x: evt.originalEvent.clientX + 10,
+        y: evt.originalEvent.clientY - 10
+      }
+      showTooltip.value = true
+      mapInstance.getTargetElement().style.cursor = 'pointer'
+    }
+  } else {
+    // 隐藏悬停提示
+    showTooltip.value = false
+    mapInstance.getTargetElement().style.cursor = ''
+  }
 }
 
 function getStationStyle(bikeNum = 0) {
@@ -76,34 +458,6 @@ function getStationStyle(bikeNum = 0) {
 }
 
 /**
- * 创建调度箭头样式
- * @param {number} quantity - 调度数量
- * @param {string} color - 箭头颜色
- * @returns {Style} OpenLayers样式对象
- */
-function createDispatchArrowStyle(quantity, color = '#ff6b35') {
-  // 根据调度数量计算线条宽度 (最小2px，最大10px)
-  const lineWidth = Math.max(2, Math.min(10, quantity * 0.8))
-  
-  return new Style({
-    stroke: new Stroke({
-      color: color,
-      width: lineWidth,
-      lineDash: [0] // 实线
-    }),
-    text: new Text({
-      text: `${quantity}`,
-      fill: new Fill({ color: '#ffffff' }),
-      stroke: new Stroke({ color: color, width: 2 }),
-      font: 'bold 12px Arial',
-      placement: 'line',
-      textAlign: 'center',
-      offsetY: -2
-    })
-  })
-}
-
-/**
  * 创建箭头头部样式
  * @param {Array} endCoordinate - 终点坐标
  * @param {number} rotation - 旋转角度
@@ -116,11 +470,11 @@ function createArrowHeadStyle(endCoordinate, rotation, color = '#ff6b35') {
     image: new Icon({
       src: 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(`
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20">
-          <path d="M10 2 L18 10 L10 18 L12 10 Z" fill="${color}" stroke="white" stroke-width="1"/>
+          <path d="M2 10 L10 2 L10 6 L18 6 L18 14 L10 14 L10 18 Z" fill="${color}" stroke="white" stroke-width="1"/>
         </svg>
       `),
       scale: 0.8,
-      rotation: rotation,
+      rotation: rotation + Math.PI / 2, // 修改：添加90度偏移，确保箭头正确指向终点
       anchor: [0.5, 0.5]
     })
   })
@@ -135,74 +489,8 @@ function createArrowHeadStyle(endCoordinate, rotation, color = '#ff6b35') {
 function calculateAngle(start, end) {
   const dx = end[0] - start[0]
   const dy = end[1] - start[1]
+  // 修改：使用Math.atan2计算从起点到终点的角度
   return Math.atan2(dy, dx)
-}
-
-/**
- * 添加调度方案到地图
- * @param {Array} dispatches - 调度方案数组
- * 每个元素格式: { startStationId, endStationId, quantity }
- */
-function addDispatchesToMap(dispatches) {
-  if (!mapInstance || !dispatchLayer || !stations.value.length) {
-    console.warn('地图未初始化或缺少必要数据')
-    return
-  }
-
-  // 清除现有的调度箭头
-  dispatchLayer.getSource().clear()
-
-  const features = []
-
-  dispatches.forEach(dispatch => {
-    const { startStationId, endStationId, quantity } = dispatch
-
-    // 查找起点和终点站点
-    const startStation = stations.value.find(s => s.station_id === startStationId)
-    const endStation = stations.value.find(s => s.station_id === endStationId)
-
-    if (!startStation || !endStation) {
-      console.warn(`找不到站点: ${startStationId} 或 ${endStationId}`)
-      return
-    }
-
-    // 转换坐标
-    const startCoord = fromLonLat([parseFloat(startStation.longitude), parseFloat(startStation.latitude)])
-    const endCoord = fromLonLat([parseFloat(endStation.longitude), parseFloat(endStation.latitude)])
-
-    // 创建线条要素
-    const lineFeature = new Feature({
-      geometry: new LineString([startCoord, endCoord])
-    })
-
-    // 设置线条样式
-    const lineStyle = createDispatchArrowStyle(quantity)
-    lineFeature.setStyle(lineStyle)
-
-    // 设置要素属性（用于悬停提示）
-    lineFeature.set('dispatchData', {
-      startStation: startStation.station_name || startStationId,
-      endStation: endStation.station_name || endStationId,
-      quantity: quantity
-    })
-
-    features.push(lineFeature)
-
-    // 创建箭头头部
-    const angle = calculateAngle(startCoord, endCoord)
-    const arrowHeadFeature = new Feature({
-      geometry: new Point(endCoord)
-    })
-    
-    const arrowHeadStyle = createArrowHeadStyle(endCoord, angle)
-    arrowHeadFeature.setStyle(arrowHeadStyle)
-    
-    features.push(arrowHeadFeature)
-  })
-
-  // 添加要素到图层
-  dispatchLayer.getSource().addFeatures(features)
-  console.log(`已添加 ${features.length} 个调度要素到地图`)
 }
 
 /**
@@ -236,25 +524,6 @@ function generateMockDispatchData() {
   return mockDispatches
 }
 
-/**
- * 切换调度图层显示状态
- */
-function toggleDispatchLayer() {
-  showDispatchLayer.value = !showDispatchLayer.value
-  
-  if (showDispatchLayer.value) {
-    // 显示调度图层
-    if (dispatchPlans.value.length === 0) {
-      // 如果没有调度方案数据，生成模拟数据
-      dispatchPlans.value = generateMockDispatchData()
-    }
-    addDispatchesToMap(dispatchPlans.value)
-    dispatchLayer.setVisible(true)
-  } else {
-    // 隐藏调度图层
-    dispatchLayer.setVisible(false)
-  }
-}
 
 async function fetchStationLocations() {
   console.log('进到获取站点位置函数')
@@ -412,7 +681,7 @@ function initializeMap() {
     ],
     view: new View({
       center: fromLonLat([-74.0576, 40.7312]),
-      zoom: 11,
+      zoom: 14,
       maxZoom: 20,
       minZoom: 3
     }),
@@ -435,8 +704,7 @@ function initializeMap() {
   mapInstance.addLayer(dispatchLayer)
 
   // 添加鼠标移动事件监听器用于悬停提示
-  mapInstance.on('pointermove', onMapHover)
-
+  mapInstance.on('pointermove', onMapHoverWithStatus)
   console.log('地图初始化完成')
 }
 
@@ -475,47 +743,6 @@ function updateMapDisplay() {
   // 添加要素到图层
   vectorLayer.getSource().addFeatures(features)
   console.log(`已添加 ${features.length} 个站点到地图`)
-}
-
-// 鼠标悬停事件处理函数
-function onMapHover(evt) {
-  if (!mapInstance) return
-  
-  const pixel = mapInstance.getEventPixel(evt.originalEvent)
-  const feature = mapInstance.forEachFeatureAtPixel(pixel, function(feature) {
-    return feature
-  })
-
-  if (feature) {
-    const station = feature.get('stationData')
-    const dispatchData = feature.get('dispatchData')
-    
-    if (station) {
-      // 显示站点悬停提示
-      const status = stationStatusMap.value[station.station_id] || {}
-      const bikeNum = status.stock ?? 0
-      tooltipContent.value = `${station.station_name || station.station_id}`
-      tooltipPosition.value = {
-        x: evt.originalEvent.clientX + 10,
-        y: evt.originalEvent.clientY - 10
-      }
-      showTooltip.value = true
-      mapInstance.getTargetElement().style.cursor = 'pointer'
-    } else if (dispatchData) {
-      // 显示调度信息悬停提示
-      tooltipContent.value = `${dispatchData.startStation} → ${dispatchData.endStation} (${dispatchData.quantity}辆)`
-      tooltipPosition.value = {
-        x: evt.originalEvent.clientX + 10,
-        y: evt.originalEvent.clientY - 10
-      }
-      showTooltip.value = true
-      mapInstance.getTargetElement().style.cursor = 'pointer'
-    }
-  } else {
-    // 隐藏悬停提示
-    showTooltip.value = false
-    mapInstance.getTargetElement().style.cursor = ''
-  }
 }
 
 /**
@@ -601,7 +828,7 @@ const logout = async () => {
 
 function getCurrentHourString2() {
   const now = new Date()
-  return now.getHours().toString() // 返回 "9" 而不是 "09:00"
+  return now.getHours().toString() // 返回 "9" 或 "15"
 }
 
 /**
@@ -629,8 +856,9 @@ onMounted(async () => {
 
 // 暴露方法供外部调用
 defineExpose({
-  addDispatchesToMap,
-  toggleDispatchLayer,
+  addDispatchesToMapWithStatus,
+  toggleDispatchLayerWithAPI,
+  fetchDispatchPlans,
   generateMockDispatchData
 })
 
@@ -662,60 +890,68 @@ defineExpose({
         <div class="right-time">
           <label>日期：</label>
           <span class="fixed-date">{{ fixedDate }}</span>
-          <label>选择时段：</label>
+          <label>当前时段：</label>
           <span class="fixed-time">{{ currentHour }}</span>
         </div>
       </div>
     </header>
 
-    <!-- 控制面板 -->
-    <div class="control-panel">
-      <button 
-        class="dispatch-toggle-btn" 
-        :class="{ active: showDispatchLayer }"
-        @click="toggleDispatchLayer"
-      >
-        {{ showDispatchLayer ? '隐藏调度方案' : '显示调度方案' }}
-      </button>
-      <span class="dispatch-info" v-if="showDispatchLayer">
-        当前显示 {{ dispatchPlans.length }} 条调度路线
-      </span>
-    </div>
+    <!-- 在控制面板部分更新 -->
+<div class="control-panel">
+  <button 
+    class="dispatch-toggle-btn" 
+    :class="{ active: showDispatchLayer }"
+    @click="toggleDispatchLayerWithAPI"
+    :disabled="dispatchLoading"
+  >
+    {{ dispatchLoading ? '加载中...' : (showDispatchLayer ? '隐藏调度方案' : '显示调度方案') }}
+  </button>
+  <span class="dispatch-info" v-if="showDispatchLayer && !dispatchLoading">
+    当前显示 {{ dispatchPlans.length }} 条调度路线
+  </span>
+  <span class="dispatch-error" v-if="dispatchError">
+    {{ dispatchError }}
+  </span>
+</div>
 
-    <!-- 图例 -->
-    <div class="legend">
-      <div class="legend-section">
-        <h4>站点状态</h4>
-        <div class="legend-item">
-          <img src="/icons/BlueLocationRound.svg" width="24" height="24" alt="少">
-          <span>少（0–5）</span>
-        </div>
-        <div class="legend-item">
-          <img src="/icons/YellowLocationRound.svg" width="24" height="24" alt="中">
-          <span>中（6–10）</span>
-        </div>
-        <div class="legend-item">
-          <img src="/icons/RedLocationRound.svg" width="24" height="24" alt="多">
-          <span>多（11+）</span>
-        </div>
-      </div>
-      
-      <div class="legend-section" v-if="showDispatchLayer">
-        <h4>调度方案</h4>
-        <div class="legend-item">
-          <div class="dispatch-line thin"></div>
-          <span>少量调度（1-5辆）</span>
-        </div>
-        <div class="legend-item">
-          <div class="dispatch-line medium"></div>
-          <span>中量调度（6-10辆）</span>
-        </div>
-        <div class="legend-item">
-          <div class="dispatch-line thick"></div>
-          <span>大量调度（11+辆）</span>
-        </div>
-      </div>
+<!-- 更新图例部分 -->
+<div class="legend">
+  <div class="legend-section">
+    <h4>站点状态</h4>
+    <div class="legend-item">
+      <img src="/icons/BlueLocationRound.svg" width="24" height="24" alt="少">
+      <span>少（0–5）</span>
     </div>
+    <div class="legend-item">
+      <img src="/icons/YellowLocationRound.svg" width="24" height="24" alt="中">
+      <span>中（6–10）</span>
+    </div>
+    <div class="legend-item">
+      <img src="/icons/RedLocationRound.svg" width="24" height="24" alt="多">
+      <span>多（11+）</span>
+    </div>
+  </div>
+  
+  <div class="legend-section" v-if="showDispatchLayer">
+    <h4>调度方案</h4>
+    <div class="legend-item">
+      <div class="dispatch-line thin pending"></div>
+      <span>待执行</span>
+    </div>
+    <div class="legend-item">
+      <div class="dispatch-line medium executing"></div>
+      <span>执行中</span>
+    </div>
+    <div class="legend-item">
+      <div class="dispatch-line thick completed"></div>
+      <span>已完成</span>
+    </div>
+    <div class="legend-item">
+      <div class="dispatch-line medium cancelled"></div>
+      <span>已取消</span>
+    </div>
+  </div>
+</div>
 
     <!-- 加载状态 -->
     <div v-if="loading" class="loading-overlay">
@@ -886,35 +1122,40 @@ defineExpose({
   align-items: center;
   gap: 12px;
 }
+.dispatch-toggle-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
 
-.dispatch-toggle-btn {
-  padding: 8px 16px;
+.dispatch-error {
+  font-size: 12px;
+  color: #dc3545;
+  font-weight: bold;
+}
+
+.dispatch-line.pending {
   background-color: #ff6b35;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: all 0.2s;
 }
 
-.dispatch-toggle-btn:hover {
-  background-color: #e55a2b;
-}
-
-.dispatch-toggle-btn.active {
+.dispatch-line.executing {
   background-color: #28a745;
 }
 
-.dispatch-toggle-btn.active:hover {
-  background-color: #218838;
+.dispatch-line.completed {
+  background-color: #6c757d;
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 2px,
+    rgba(255, 255, 255, 0.3) 2px,
+    rgba(255, 255, 255, 0.3) 4px
+  );
 }
 
-.dispatch-info {
-  font-size: 12px;
-  color: #666;
-  font-style: italic;
+.dispatch-line.cancelled {
+  background-color: #dc3545;
 }
+
 
 .legend {
   position: absolute;

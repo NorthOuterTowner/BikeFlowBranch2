@@ -1,9 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const { exec } = require('child_process');
+const authMiddleware = require("../utils/auth");
 
 // GET /api/schedule?date=2025-06-13&hour=9
-router.get('/', (req, res) => {
+router.get('/',authMiddleware, (req, res) => {
   const { date, hour } = req.query;
 
   if (!date || !hour) {
@@ -20,7 +21,7 @@ router.get('/', (req, res) => {
     }
 
     console.log(`[调度成功] 输出:`, stdout);
-    return res.json({ success: true, message: '调度成功', output: stdout });
+    return res.status(200).json({ success: true, message: '调度成功', output: stdout });
   });
 });
 
