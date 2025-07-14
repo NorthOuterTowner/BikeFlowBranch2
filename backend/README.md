@@ -500,12 +500,16 @@ query_time	String	查询的时间点，ISO 8601格式。	2025-06-13T08:45:00Z
 }
 ```
 7、返回调度信息
-   （1）返回某一时间点所有调度信息（get）
+   （1）返回某一时间点所有调度信息（post）
 ```bash
 /guide/route
 ```
 请求格式
 ```bash
+{
+  "startCoord": [116.3974, 39.9093],
+  "endCoord": [116.4854, 39.9903]
+}
 startCoord 前端中格式化的地点数据
 endCoord 
 ```
