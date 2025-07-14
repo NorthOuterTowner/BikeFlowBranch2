@@ -53,9 +53,10 @@
 
       const user = res.data.data
 
-      localStorage.setItem('token', user.token)
-      localStorage.setItem('account', user.account)
-      localStorage.setItem('email', user.email || '')
+      sessionStorage.setItem('token', user.token)
+      sessionStorage.setItem('account', user.account)
+      sessionStorage.setItem('email', user.email || '')
+
 
         loading.value = true // 开始加载状态
         // 等 1.5 秒后再跳转，让用户看到提示

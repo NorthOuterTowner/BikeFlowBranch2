@@ -11,11 +11,12 @@ import Feature from 'ol/Feature'
 import Point from 'ol/geom/Point'
 import LineString from 'ol/geom/LineString'
 import { fromLonLat } from 'ol/proj'
-import { Style, Stroke, Fill, Circle, Text } from 'ol/style'
+import { Style, Stroke, Fill, Circle, Text, Icon } from 'ol/style'
 import { Zoom } from 'ol/control' // 确保导入 Zoom
 import request from '@/api/axios' // Axios 请求实例
 import { startDispatch,cancelDispatch, getStationAssign, getDispatch } from '../../api/axios'
 import Overlay from 'ol/Overlay'
+
 
 // ==================== 工具&响应式数据 ====================
 const mapStatus = (statusInt) => {
@@ -40,7 +41,6 @@ let popupOverlay; // 保存 overlay
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImE0ZjM4NDNiZmE3NDQ0YTM4MmNhNmEyMWM4NWUxYjU0IiwiaCI6Im11cm11cjY0In0='
 const ORS_BASE_URL = 'https://api.openrouteservice.org/v2'
 
-
 const welcoming = ref('管理员，欢迎您！') // 欢迎信息
 const fixedDate = computed(() => {
   // 获取固定日期，优先从 localStorage 取，否则取当前日期
@@ -51,6 +51,181 @@ const currentHour = getCurrentHourString() // 获取当前小时字符串
 const now = new Date().toISOString()
 const lookup_date = ref('2025-06-13')
 const lookup_hour = ref(9)
+
+// 2. 在响应式数据部分添加导航相关变量
+const navigationActive = ref(false)
+const currentRoute = ref(null)
+const navigationInstructions = ref([])
+const routeDistance = ref(0)
+const routeDuration = ref(0)
+const selectedDispatch = ref(null)
+const loading = ref(false)
+let navigationLayer = null
+
+// 3. 修改 onMounted 中的地图初始化，添加导航图层
+// 在 vectorLayer 初始化后添加：
+navigationLayer = new VectorLayer({
+  source: new VectorSource(),
+  zIndex: 15 // 确保在其他图层之上
+})
+
+/**
+ * 调用 OpenRouteService 获取路线
+ */
+async function getRoute(startCoord, endCoord) {
+  try {
+    const response = await fetch(`${ORS_BASE_URL}/directions/driving-car/geojson`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json, application/geo+json',
+        'Authorization': ORS_API_KEY,
+        'Content-Type': 'application/json; charset=utf-8'
+      },
+      body: JSON.stringify({
+        coordinates: [startCoord, endCoord],
+        format: 'geojson',
+        instructions: true,
+        language: 'zh-cn'
+      })
+    })
+
+    const raw = await response.text()
+    console.log('ORS 原始响应:', raw)
+
+    const data = JSON.parse(raw)
+    return data
+  } catch (error) {
+    console.error('获取路线失败:', error)
+    throw error
+  }
+}
+
+/**
+ * 显示导航路线
+ */
+async function showNavigation(dispatch) {
+  try {
+    loading.value = true
+    selectedDispatch.value = dispatch
+    
+    // 获取起点和终点坐标
+    const startCoord = [parseFloat(dispatch.start_station.lng), parseFloat(dispatch.start_station.lat)]
+    const endCoord = [parseFloat(dispatch.end_station.lng), parseFloat(dispatch.end_station.lat)]
+    
+    console.log('开始导航:', { startCoord, endCoord })
+    
+    // 获取路线数据
+    const routeData = await getRoute(startCoord, endCoord)
+    
+    if (!routeData.features || routeData.features.length === 0) {
+      throw new Error('未找到有效路线')
+    }
+    
+    const route = routeData.features[0]
+    const geometry = route.geometry
+    const properties = route.properties
+    
+    // 保存路线信息
+    currentRoute.value = route
+    navigationInstructions.value = properties.segments[0].steps || []
+    routeDistance.value = (properties.summary.distance / 1000).toFixed(2) // 转换为公里
+    routeDuration.value = Math.round(properties.summary.duration / 60) // 转换为分钟
+    
+    // 清除现有图层，只保留导航相关内容
+    vectorLayer.getSource().clear()
+    navigationLayer.getSource().clear()
+    
+    // 创建路线要素
+    const routeCoords = geometry.coordinates.map(coord => fromLonLat(coord))
+    const routeFeature = new Feature({
+      geometry: new LineString(routeCoords)
+    })
+    
+    // 设置路线样式
+    routeFeature.setStyle(new Style({
+      stroke: new Stroke({
+        color: '#007bff',
+        width: 4
+      })
+    }))
+    
+    // 添加起点标记
+    const startMarker = new Feature({
+      geometry: new Point(fromLonLat(startCoord))
+    })
+    startMarker.setStyle(new Style({
+      image: new Circle({
+        radius: 12,
+        fill: new Fill({ color: '#28a745' }),
+        stroke: new Stroke({ color: '#fff', width: 2 })
+      }),
+      text: new Text({
+        text: '起',
+        font: 'bold 12px sans-serif',
+        fill: new Fill({ color: 'white' })
+      })
+    }))
+    
+    // 添加终点标记
+    const endMarker = new Feature({
+      geometry: new Point(fromLonLat(endCoord))
+    })
+    endMarker.setStyle(new Style({
+      image: new Circle({
+        radius: 12,
+        fill: new Fill({ color: '#dc3545' }),
+        stroke: new Stroke({ color: '#fff', width: 2 })
+      }),
+      text: new Text({
+        text: '终',
+        font: 'bold 12px sans-serif',
+        fill: new Fill({ color: 'white' })
+      })
+    }))
+    
+    // 添加要素到导航图层
+    navigationLayer.getSource().addFeatures([routeFeature, startMarker, endMarker])
+    
+    // 设置地图视图以包含整个路线
+    const extent = routeFeature.getGeometry().getExtent()
+    mapInstance.getView().fit(extent, {
+      padding: [50, 50, 50, 50],
+      duration: 1000
+    })
+    
+    navigationActive.value = true
+    
+    console.log('导航路线显示成功')
+    
+  } catch (error) {
+    console.error('显示导航失败:', error)
+    alert('导航失败：' + error.message)
+  } finally {
+    loading.value = false
+  }
+}
+
+/**
+ * 清除导航
+ */
+function clearNavigation() {
+  navigationActive.value = false
+  currentRoute.value = null
+  navigationInstructions.value = []
+  routeDistance.value = 0
+  routeDuration.value = 0
+  selectedDispatch.value = null
+  
+  if (navigationLayer) {
+    navigationLayer.getSource().clear()
+  }
+  
+  // 恢复原来的调度方案显示
+  if (selectedPlan.value) {
+    drawDispatchPlanOnMap(selectedPlan.value)
+  }
+}
+
 
 // 后端调度列表
 const allDispatchList = ref([])
@@ -84,10 +259,11 @@ function getCurrentHourString() {
 const logout = async () => {
   try {
     await request.post('/api/user/logout')
-    localStorage.removeItem('token')
   } catch (error) {
     console.warn('登出失败，可忽略', error)
   } finally {
+    // 清除所有 sessionStorage 项
+    sessionStorage.clear()
     router.push('/login')
   }
 }
@@ -352,6 +528,7 @@ onMounted(async () => {
     className: 'ol-zoom-custom' // 使用自定义 CSS 类
   })
   mapInstance.addControl(zoomControl)
+  mapInstance.addLayer(navigationLayer)
 
   // 初始化矢量图层并添加到地图
   vectorLayer = new VectorLayer({
@@ -553,93 +730,91 @@ function focusStationOnMap(station) {
     </header>
 
     <div class="main-content">
-  <!-- 左侧列表面板 -->
-  <div class="dispatch-list-panel">
-    <!-- 状态切换 -->
-    <div class="status-buttons">
-      <button
-        v-for="status in ['全部','待执行','正在执行','已完成']"
-        :key="status"
-        @click="currentStatusFilter = status"
-        :class="['status-btn', currentStatusFilter === status ? 'active' : '']"
-      >
-        {{ status }}
-      </button>
-    </div>
-    <!-- 批量操作 -->
-    <div class="button-row">
-      <div class="batch-buttons">
-        <button @click="batchStart">批量采用</button>
-        <button @click="batchCancel">批量撤销</button>
-      </div>
+      <!-- 左侧列表面板 -->
+      <div class="dispatch-list-panel">
+        <!-- 状态切换 -->
+        <div class="status-buttons">
+          <button
+            v-for="status in ['全部','待执行','正在执行','已完成']"
+            :key="status"
+            @click="currentStatusFilter = status"
+            :class="['status-btn', currentStatusFilter === status ? 'active' : '']"
+          >
+            {{ status }}
+          </button>
+        </div>
 
-      <div class="highlight-btn">
-        <button @click="highlightStations">
-          {{ showHighlight ? '隐藏调出站点' : '查看调出站点' }}
-        </button>
+        <!-- 批量操作 -->
+        <div class="button-row">
+          <div class="batch-buttons">
+            <button @click="batchStart">批量采用</button>
+            <button @click="batchCancel">批量撤销</button>
+          </div>
+          <div class="highlight-btn">
+            <button @click="highlightStations">
+              {{ showHighlight ? '隐藏调出站点' : '查看调出站点' }}
+            </button>
+          </div>
+        </div>
 
-      </div>
-    </div>
-
-
-    <!-- 表格列表 -->
-    <table class="plan-table">
-  <thead>
-    <tr>
-      <th>多选</th>
-      <th>起止站点</th>
-      <th>状态</th>
-      <th>数量</th>
-      <th>操作</th>
-    </tr>
-    
-  </thead>
-  
-  <tbody>
-    <tr
-      v-for="item in filteredDispatchList"
-      :key="item.schedule_id"
-      :class="{ selected: selectedPlan && selectedPlan.schedule_id === item.schedule_id }"
-      @click="selectPlan(item)"
-    >
-      <td>
-        <input type="checkbox" v-model="selectedIds" :value="item.schedule_id" @click.stop />
-      </td>
-      <td>{{ item.start_station.id }} → {{ item.end_station.id }}</td>
-
-      <!-- 状态：加圆角彩色标签 -->
-      <td>
-        <span 
-          :class="[
-            'status-tag',
-            item.statusInt === '待执行' ? 'status-pending' : '',
-            item.statusInt === '正在执行' ? 'status-running' : '',
-            item.statusInt === '已完成' ? 'status-finished' : ''
-          ]"
-        >
-          {{ item.statusInt }}
-        </span>
-      </td>
-
-      <td>{{ item.bikes_to_move ?? '-' }}</td>
-
-      <!-- 操作按钮判断用 mapStatus 转文字 -->
-      <td>
-        <button v-if="item.statusInt === '待执行'" @click.stop="handleStart(item)">采用</button>
-        <button v-if="item.statusInt === '正在执行'" @click.stop="handleCancel(item)">撤销</button>
-      </td>
-    </tr>
-  </tbody>
-</table>
+        <!-- 表格列表 -->
+        <table class="plan-table">
+          <thead>
+            <tr>
+              <th>多选</th>
+              <th>起止站点</th>
+              <th>状态</th>
+              <th>数量</th>
+              <th>操作</th>
+              <th>导航</th>
+            </tr>
+          </thead>
+          
+          <tbody>
+            <tr
+              v-for="item in filteredDispatchList"
+              :key="item.schedule_id"
+              :class="{ selected: selectedPlan && selectedPlan.schedule_id === item.schedule_id }"
+              @click="selectPlan(item)"
+            >
+              <td>
+                <input type="checkbox" v-model="selectedIds" :value="item.schedule_id" @click.stop />
+              </td>
+              <td>{{ item.start_station.name }} → {{ item.end_station.name }}</td>
+              <td>
+                <span 
+                  :class="[
+                    'status-tag',
+                    item.statusInt === '待执行' ? 'status-pending' : '',
+                    item.statusInt === '正在执行' ? 'status-running' : '',
+                    item.statusInt === '已完成' ? 'status-finished' : ''
+                  ]"
+                >
+                  {{ item.statusInt }}
+                </span>
+              </td>
+              <td>{{ item.bikes_to_move ?? '-' }}</td>
+              <td>
+                <button v-if="item.statusInt === '待执行'" @click.stop="handleStart(item)">采用</button>
+                <button v-if="item.statusInt === '正在执行'" @click.stop="handleCancel(item)">撤销</button>
+              </td>
+              <td>
+                <button @click.stop="showNavigation(item)" :disabled="loading">
+                  {{ loading ? '加载中...' : '导航' }}
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
 
 
 
     
   </div>
 
-  <div class="map-panel">
+  <!-- <div class="map-panel">
       <div ref="mapContainer" class="map"></div>
-    </div>
+    </div> -->
 
     <div class="highlight-info-panel" v-if="showHighlight && highlightStationList.length">
       <h4>调出站点</h4>
@@ -655,16 +830,75 @@ function focusStationOnMap(station) {
       </ul>
     </div>
 
-</div>
+      <!-- 右侧地图面板 -->
+      <div class="map-panel">
+        <div ref="mapContainer" class="map"></div>
+        
+        <!-- 导航信息面板 -->
+        <div v-if="navigationActive" class="navigation-info-panel">
+          <div class="navigation-header">
+            <h3>导航信息</h3>
+            <button class="close-btn" @click="clearNavigation">×</button>
+          </div>
+          
+          <div class="navigation-content">
+            <div class="route-summary">
+              <div class="route-info">
+                <span class="label">起点：</span>
+                <span>{{ selectedDispatch?.start_station.name }}</span>
+              </div>
+              <div class="route-info">
+                <span class="label">终点：</span>
+                <span>{{ selectedDispatch?.end_station.name }}</span>
+              </div>
+              <div class="route-info">
+                <span class="label">距离：</span>
+                <span>{{ routeDistance }} 公里</span>
+              </div>
+              <div class="route-info">
+                <span class="label">预计时间：</span>
+                <span>{{ routeDuration }} 分钟</span>
+              </div>
+            </div>
+            
+            <div class="navigation-instructions">
+              <h4>导航指令</h4>
+              <div class="instructions-list">
+                <div 
+                  v-for="(instruction, index) in navigationInstructions" 
+                  :key="index"
+                  class="instruction-item"
+                >
+                  <div class="instruction-distance">{{ (instruction.distance / 1000).toFixed(2) }}km</div>
+                  <div class="instruction-text">{{ instruction.instruction }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
-
-
 </template>
 
 <style scoped>
 /* header 和布局样式 */
-.title { font-size:18px; font-weight:bold; }
-.user-info { text-align:right; }
+
+.title {
+  font-size: 20px;
+  font-weight: bold;
+  margin: 0;
+}
+
+.user-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  margin-left: 20px;
+  gap: 15px;
+  flex-shrink: 0;
+}
+
 .logout-button { background:#091275; color:white; border:none; padding:4px 8px; border-radius:4px; cursor:pointer; }
 /* 左侧面板 */
 .plan-item { border:1px solid #ddd; margin-bottom:6px; padding:6px; border-radius:4px; cursor:pointer; }
@@ -842,6 +1076,7 @@ function focusStationOnMap(station) {
   align-items: center;
   gap: 12px;
 }
+
 .highlight-info-panel {
   position: absolute;
   top: 70px;
@@ -876,6 +1111,155 @@ function focusStationOnMap(station) {
   display: inline-block;
   width: 1em; /* 确保点和文本对齐 */
   margin-left: -1em; /* 向左移动点 */
+}
+
+/* 添加到 <style scoped> 中 */
+
+/* 导航信息面板样式 */
+.navigation-info-panel {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 320px;
+  max-height: 80vh;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  overflow: hidden;
+}
+
+.navigation-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background-color: #007bff;
+  color: white;
+}
+
+.navigation-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background-color 0.2s;
+}
+
+.close-btn:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.navigation-content {
+  padding: 16px;
+  max-height: calc(80vh - 60px);
+  overflow-y: auto;
+}
+
+.route-summary {
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #eee;
+}
+
+.route-info {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.route-info .label {
+  font-weight: 600;
+  color: #333;
+}
+
+.navigation-instructions h4 {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+}
+
+.instructions-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.instruction-item {
+  display: flex;
+  align-items: flex-start;
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f0f0;
+  font-size: 13px;
+}
+
+.instruction-item:last-child {
+  border-bottom: none;
+}
+
+.instruction-distance {
+  min-width: 50px;
+  font-weight: 600;
+  color: #007bff;
+  margin-right: 12px;
+}
+
+.instruction-text {
+  flex: 1;
+  line-height: 1.4;
+  color: #666;
+}
+
+/* 导航按钮样式 */
+.plan-table button[disabled] {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+.plan-table button[disabled]:hover {
+  background-color: #ccc;
+}
+
+.right-time {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.right-time label {
+  font-size: 14px;
+  color: #495057;
+  white-space: nowrap;
+}
+
+
+.right-time .fixed-date {
+  margin-right: 20px;
+  font-weight: bold;
+  color: #091275;
+}
+
+.right-time select {
+  padding: 6px 10px;
+  font-size: 14px;
+  height: 30px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
 }
 
 </style>
