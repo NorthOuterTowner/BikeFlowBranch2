@@ -10,7 +10,8 @@ module.exports = (sequelize, DataTypes) => {
     capacity: {
       type: DataTypes.INTEGER,
       defaultValue: 20
-    }
+    },
+    station_name: DataTypes.STRING(100)
   }, {
     tableName: 'station_info',
     freezeTableName: true,

@@ -269,6 +269,7 @@ predict_time	String	查询的时间点，ISO 8601格式。	2025-01-22T17:10:00Z
     "number": 1, //调度数量
     "dispatchDate": "2025-01-16",//调度日期
     "dispatchHour": 17 //调度小时
+    "dispatchId": 36 //调度编号
 }
 ```
 返回格式
@@ -296,6 +297,30 @@ predict_time	String	查询的时间点，ISO 8601格式。	2025-01-22T17:10:00Z
     "msg": "已拒绝该调度"
 }
 ```
+（3）取消调度
+status设置为0
+```bash
+/dispatch/cancelChange
+```
+请求格式
+```bash
+{
+    "startStation": "X2019", //起始站点编号
+    "endStation": "X2024", //目标站点编号
+    "number": 1, //调度数量
+    "dispatchDate": "2025-01-16",//调度日期
+    "dispatchHour": 17 //调度小时
+    "dispatchId": 36 //调度编号
+}
+```
+返回格式
+```bash
+{
+  "code": 200, //状态码
+  "msg": "已取消调度"
+}
+```
+
 6. 返回调度信息
    （1）返回某一时间点所有调度信息（get）
 ```bash
@@ -310,7 +335,8 @@ query_time	String	查询的时间点，ISO 8601格式。	2025-06-13T08:45:00Z
 {
     "lookup_date": "2025-06-13",
     "lookup_hour": 6,
-    "schedules": [
+    "schedules": 
+    [
         {
             "schedule_id": 35,//调度编号
             "bikes_to_move": 2,//移动车
@@ -351,7 +377,8 @@ role	String 可选	筛选站点在调度中的角色。<br> - 'start': 站点作
     "lookup_hour": 6,
     "station_id": "HB101",
     "role_filter": "all",
-    "schedules": [
+    "schedules": 
+    [
         {
             "schedule_id": 42,
             "bikes_to_move": 5,
@@ -362,7 +389,8 @@ role	String 可选	筛选站点在调度中的角色。<br> - 'start': 站点作
                 "lat": 40.7359,
                 "lng": -74.0303
             },
-            "end_station": {
+            "end_station": 
+            {
                 "id": "JC053",
                 "name": "Lincoln Park",
                 "lat": 40.7246,
@@ -372,5 +400,122 @@ role	String 可选	筛选站点在调度中的角色。<br> - 'start': 站点作
         }
         ...
     ]
+}
+```
+（3）返回某一时间点所有有调度出信息的站点（get）
+```bash
+/search/stationAssign
+```
+请求格式
+```bash
+date hour
+```
+返回格式
+```bash
+{
+    "code": 200,
+    "station_result": 
+    [
+        {
+            "station_name": "Hoboken Terminal - Hudson St & Hudson Pl"
+        },...
+    ]
+}
+```
+
+6. 返回调度信息
+   （1）返回某一时间点所有调度信息（get）
+```bash
+/dispatch
+```
+请求格式
+```bash
+query_time	String	查询的时间点，ISO 8601格式。	2025-06-13T08:45:00Z
+```
+返回格式
+```bash
+{
+    "lookup_date": "2025-06-13",
+    "lookup_hour": 6,
+    "schedules": 
+    [
+        {
+            "schedule_id": 35,//调度编号
+            "bikes_to_move": 2,//移动车
+            "status": "待执行",//状态信息
+            "start_station": {
+                "id": "HB101",
+                "name": "Hoboken Terminal - Hudson St & Hudson Pl",
+                "lat": 40.7359,
+                "lng": -74.0303
+            },
+            "end_station": {
+                "id": "HB304",
+                "name": "Marshall St & 2 St",
+                "lat": 40.7408,
+                "lng": -74.0425
+            },
+            "updated_at": "2025-07-11T10:32:31.000Z"
+        }
+        // ... 如果同一调度周期有其他任务，也会在此列出
+    ]
+}
+
+6. 返回调度信息
+   （1）返回某一时间点所有调度信息（get）
+```bash
+/dispatch
+```
+请求格式
+```bash
+query_time	String	查询的时间点，ISO 8601格式。	2025-06-13T08:45:00Z
+```
+返回格式
+```bash
+{
+    "lookup_date": "2025-06-13",
+    "lookup_hour": 6,
+    "schedules": 
+    [
+        {
+            "schedule_id": 35,//调度编号
+            "bikes_to_move": 2,//移动车
+            "status": "待执行",//状态信息
+            "start_station": {
+                "id": "HB101",
+                "name": "Hoboken Terminal - Hudson St & Hudson Pl",
+                "lat": 40.7359,
+                "lng": -74.0303
+            },
+            "end_station": {
+                "id": "HB304",
+                "name": "Marshall St & 2 St",
+                "lat": 40.7408,
+                "lng": -74.0425
+            },
+            "updated_at": "2025-07-11T10:32:31.000Z"
+        }
+        // ... 如果同一调度周期有其他任务，也会在此列出
+    ]
+}
+```
+7、返回调度信息
+   （1）返回某一时间点所有调度信息（post）
+```bash
+/guide/route
+```
+请求格式
+```bash
+{
+  "startCoord": [116.3974, 39.9093],
+  "endCoord": [116.4854, 39.9903]
+}
+startCoord 前端中格式化的地点数据
+endCoord 
+```
+返回格式
+```bash
+{
+   res.json(orsResponse.data);//返回的是这个东西（要以json格式），可以解析一下
 }
 ```

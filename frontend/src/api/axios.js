@@ -6,8 +6,8 @@ const request = axios.create({
 })
 
 request.interceptors.request.use(config => {
-  const token = localStorage.getItem('token')
-  const account = localStorage.getItem('account')
+  const token = sessionStorage.getItem('token')
+  const account = sessionStorage.getItem('account')
   if (token && account) {
     config.headers['token'] = token
     config.headers['account'] = account
@@ -32,6 +32,36 @@ export function login(username, password) {
     account: username,
     password: password
   })
+}
+
+export function getDispatch(queryTime) {
+  return request.get('/dispatch', {
+    params: { query_time: queryTime }
+  })     
+}
+
+export function startDispatch(data) {
+  return request.post('/dispatch/change', data)
+}
+
+export function cancelDispatch(data) {
+  return request.post('/dispatch/cancelChange', data)
+}
+
+export async function getStationAssign(params = {}) {
+  try {
+    const res = await request.get('/search/stationAssign', { params });
+    console.log('调出站点接口返回:', res.data);
+    const result = res.data.station_result;
+    if (!result || !Array.isArray(result)) {
+      console.error('获取调出站点失败，返回数据格式错误', res.data);
+      return [];
+    }
+    return result;
+  } catch (error) {
+    console.error('获取调出站点接口请求失败', error);
+    return [];
+  }
 }
 
 export default request

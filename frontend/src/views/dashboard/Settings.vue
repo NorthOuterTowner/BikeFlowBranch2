@@ -56,11 +56,14 @@ const inlineSuccessMessage = ref('')
 
 const logout = async () => {
   try {
-    await fetch('/api/user/logout', { method: 'POST' })
-  } catch (err) {
-    console.warn('退出失败', err)
+    await request.post('/api/user/logout')
+  } catch (error) {
+    console.warn('登出失败，可忽略', error)
+  } finally {
+    // 清除所有 sessionStorage 项
+    sessionStorage.clear()
+    router.push('/login')
   }
-  router.push('/login')
 }
 
 // 读取 localStorage 中的日期，若无则使用今天
@@ -126,8 +129,11 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 8px;
+  margin-left: 20px;
+  gap: 15px;
+  flex-shrink: 0;
 }
+
 
 .user-top {
   display: flex;
