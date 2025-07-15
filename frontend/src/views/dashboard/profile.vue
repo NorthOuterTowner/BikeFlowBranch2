@@ -108,6 +108,7 @@ async function resetAccount(oldName, newName) {
     }
   )
 }
+
 async function reserPassword(email, newPassword) {
   return request.post(
     '/reset/pwd',

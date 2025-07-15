@@ -22,7 +22,7 @@ export function register(username, password, email) {
     password: password,
     email:email
   }, {
-    headers: { 'Content-Type': 'application/json' }  // 👈 确保是 json
+    headers: { 'Content-Type': 'application/json' }  //  确保是 json
   })
 }
 
