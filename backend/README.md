@@ -455,14 +455,22 @@ endCoord
    res.json(orsResponse.data);//返回的是这个东西（要以json格式），可以解析一下
 }
 ```
+<<<<<<< HEAD
 8、使用deepseek
 （1）deepseek根据现有预测和调度方案和用户要求优化并返回增加的调度方案（post）
 ```bash
 /suggestions/dispatch
+=======
+8.修改调度方案
+（1）修改调度方案（POST）
+```bash
+/dispatch/edit
+>>>>>>> 7ad35d1dcd418f6831a77068a38db5fd0e541a0a
 ```
 请求格式
 ```bash
 {
+<<<<<<< HEAD
   "target_time": "2025-06-13T09:00:00Z",
   "user_guidance": "优先保证Hoboken总站的车辆充足，可以从附近的站点调车过来。"
 }
@@ -488,3 +496,12 @@ endCoord
     ]//调度方案建议
 }
 ```
+=======
+    "id":[调度方案编号],
+    "date":[调度日期],
+    "hour":[调度小时],
+    "start_id":[起始站点编号],
+    "end_id":[目标站点编号],
+    "bikes":[调度数量]
+}
+>>>>>>> 7ad35d1dcd418f6831a77068a38db5fd0e541a0a

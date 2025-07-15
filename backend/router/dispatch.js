@@ -533,4 +533,21 @@ async function afterTimeSchedule(number,startStation,dispatchDate,dispatchHour){
   await db.async.run(changeSql,[number,startStation,dispatchDate,dispatchHour])
 }
 
+router.post('/edit',authMiddleware, async (req,res)=>{
+  let {id,date,hour,start_id,end_id,bikes} = req.body
+  try{
+    const editSql = 'update `station_schedule` set `date` = ?, `hour` = ?, `start_id` = ?, `end_id` = ?, `bikes` = ? where `id` = ?;'
+    await db.async.run(editSql,[date,hour,start_id,end_id,bikes,id])
+    return res.status(200).send({
+      code:200,
+      msg:"调度信息修改成功"
+    })
+  }catch(err){
+    return res.status(500).send({
+      code:500,
+      err
+    })
+  }  
+})
+
 module.exports = router;

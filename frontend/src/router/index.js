@@ -11,11 +11,13 @@ import Profile from '../views/dashboard/profile.vue'
 import schedule from '../views/dashboard/schedule.vue'
 import dispatch from '../views/dashboard/dispatch.vue'
 import guide from '../views/dashboard/guide.vue'
+import deepseek from '../views/dashboard/deepseek.vue'
 
 const routes = [
   { path: '/', redirect: '/login' },
   { path: '/login', component: Login },
   { path: '/register', component: Register },
+   
   {
     path: '/dashboard',
     component: Dashboard,
@@ -27,7 +29,8 @@ const routes = [
       { path: 'profile', component: Profile },
       { path: 'schedule', component: schedule },
       { path: 'dispatch', component: dispatch },
-      { path: 'guide', component: guide }
+      { path: 'guide', component: guide },
+      { path: 'deepseek', component: deepseek },
     ]
   },
 ]
