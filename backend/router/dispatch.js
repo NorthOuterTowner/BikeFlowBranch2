@@ -439,7 +439,7 @@ router.post('/reject',authMiddleware, async (req,res)=>{
  * @apiParam {String} query_time ISO 8601 格式的查询时间。
  * @apiParam {String} [role] 可选, 站点的角色 ('start' 或 'end')。
  */
-router.get('/by-station',authMiddleware, async (req, res) => {
+router.get('/by-station', authMiddleware, async (req, res) => {
     const { station_id, query_time, role } = req.query;
 
     // 1. 参数校验
@@ -457,59 +457,74 @@ router.get('/by-station',authMiddleware, async (req, res) => {
         }
 
         // (可选但推荐) 校验站点是否存在
-        const stationExists = await StationInfo.findByPk(station_id);
-        if (!stationExists) {
+        const { rows: stationExistsRows } = await db.async.all('SELECT 1 FROM station_info WHERE station_id = ? LIMIT 1', [station_id]);
+        if (stationExistsRows.length === 0) {
             return res.status(404).json({ error: `Station with ID ${station_id} not found.` });
         }
 
-        // 2. 动态构建查询条件 (合并时间和站点逻辑)
+        // 2. 动态构建 SQL 查询
         const dateForQuery = toYYYYMMDD(queryDate);
-        const originalHour = queryDate.getUTCHours();
-        const hourForQuery = Math.floor(originalHour / 3) * 3;
+        const hourForQuery = Math.floor(queryDate.getUTCHours() / 3) * 3;
 
-        let whereClause = {
-            date: dateForQuery,
-            hour: hourForQuery
-        };
+        // 基础SQL，使用别名 s, start_info, end_info
+        let baseSql = `
+            SELECT
+                s.id AS schedule_id,
+                s.bikes,
+                s.status,
+                s.updated_at,
+                start_info.station_id AS start_station_id,
+                start_info.station_name AS start_station_name,
+                start_info.lat AS start_lat,
+                start_info.lng AS start_lng,
+                end_info.station_id AS end_station_id,
+                end_info.station_name AS end_station_name,
+                end_info.lat AS end_lat,
+                end_info.lng AS end_lng
+            FROM
+                station_schedule AS s
+            LEFT JOIN
+                station_info AS start_info ON s.start_id = start_info.station_id
+            LEFT JOIN
+                station_info AS end_info ON s.end_id = end_info.station_id
+        `;
 
+        let whereConditions = 'WHERE s.date = ? AND s.hour = ?';
+        let params = [dateForQuery, hourForQuery];
+
+        // 动态添加站点和角色相关的查询条件
         if (role === 'start') {
-            whereClause.start_id = station_id;
+            whereConditions += ' AND s.start_id = ?';
+            params.push(station_id);
         } else if (role === 'end') {
-            whereClause.end_id = station_id;
+            whereConditions += ' AND s.end_id = ?';
+            params.push(station_id);
         } else {
-            whereClause[Op.or] = [
-                { start_id: station_id },
-                { end_id: station_id }
-            ];
+            whereConditions += ' AND (s.start_id = ? OR s.end_id = ?)';
+            params.push(station_id, station_id);
         }
 
+        const finalSql = `${baseSql} ${whereConditions} ORDER BY s.id ASC;`;
+
         // 3. 执行查询
-        const schedules = await StationSchedule.findAll({
-            where: whereClause,
-            include: [
-                { model: StationInfo, as: 'startStation', attributes: ['station_id', 'station_name', 'lat', 'lng'] },
-                { model: StationInfo, as: 'endStation', attributes: ['station_id', 'station_name', 'lat', 'lng'] }
-            ],
-            order: [['id', 'ASC']],
-            attributes: { exclude: ['start_id', 'end_id'] }
-        });
+        const { rows: schedules } = await db.async.all(finalSql, params);
 
         // 4. 格式化响应
         const formattedSchedules = schedules.map(schedule => ({
-            schedule_id: schedule.id,
+            schedule_id: schedule.schedule_id,
             bikes_to_move: schedule.bikes,
             status: mapScheduleStatus(schedule.status),
-            start_station: schedule.startStation ? {
-                id: schedule.startStation.station_id,
-                name: schedule.startStation.station_name,
-                lat: schedule.startStation.lat,
-                lng: schedule.startStation.lng
+            start_station: schedule.start_station_id ? {
+                id: schedule.start_station_id,
+                name: schedule.start_station_name,
+                lat: schedule.start_lat,
+                lng: schedule.start_lng
             } : null,
-            end_station: schedule.endStation ? {
-                id: schedule.endStation.station_id,
-                name: schedule.endStation.station_name,
-                lat: schedule.endStation.lat,
-                lng: schedule.endStation.lng
+            end_station: schedule.end_station_id ? {
+                id: schedule.end_station_id,
+                name: schedule.end_station_name,
+                lat: schedule.end_lat,
+                lng: schedule.end_lng
             } : null,
             updated_at: schedule.updated_at
         }));
@@ -523,7 +538,7 @@ router.get('/by-station',authMiddleware, async (req, res) => {
         });
 
     } catch (err) {
-        console.error('Schedule by Station & Time Lookup API Error:', err);
+        console.error('Schedule by Station & Time Lookup API Error (SQL):', err);
         res.status(500).json({ error: 'An internal server error occurred.' });
     }
 });
