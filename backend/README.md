@@ -454,22 +454,30 @@ endCoord
    res.json(orsResponse.data);//返回的是这个东西（要以json格式），可以解析一下
 }
 ```
-<<<<<<< HEAD
-8、使用deepseek
-（1）deepseek根据现有预测和调度方案和用户要求优化并返回增加的调度方案（post）
-```bash
-/suggestions/dispatch
-=======
+
 8.修改调度方案
 （1）修改调度方案（POST）
 ```bash
 /dispatch/edit
->>>>>>> 7ad35d1dcd418f6831a77068a38db5fd0e541a0a
+请求格式
 ```
+    "id":[调度方案编号],
+    "bikes":[调度数量]
+}
+返回格式
+```
+{
+  "code":200,
+  "msg":"修改成功
+}
+```
+9.使用deepseek
+（1）deepseek根据现有预测和调度方案和用户要求优化并返回增加的调度方案（post）
+```bash
+/suggestions/dispatch
 请求格式
 ```bash
 {
-<<<<<<< HEAD
   "target_time": "2025-06-13T09:00:00Z",
   "user_guidance": "优先保证Hoboken总站的车辆充足，可以从附近的站点调车过来。"
 }
@@ -495,12 +503,91 @@ endCoord
     ]//调度方案建议
 }
 ```
-=======
-    "id":[调度方案编号],
-    "date":[调度日期],
-    "hour":[调度小时],
-    "start_id":[起始站点编号],
-    "end_id":[目标站点编号],
-    "bikes":[调度数量]
+
+9.统计数据
+（2）指定时间段总流量（POST）
+```bash
+/statistics/flow/time
+```
+输入格式
+```bash
+{
+  "startDate": "2025-01-01", //开始日期
+  "startHour": "10", //开始小时
+  "endDate": "2025-02-01", //结束日期
+  "endHour": "12" //结束小时
 }
->>>>>>> 7ad35d1dcd418f6831a77068a38db5fd0e541a0a
+```
+输出格式
+```bash
+{
+    "code": 200,
+    "data": 
+    {
+        "inflow": 50304,
+        "outflow": 50291,
+        "total": 100595
+    }
+}
+```
+（1）获取top10站点及其流量（POST）
+```bash
+/statistics/top10
+```
+请求格式
+```bash
+{
+  "startDate": "2025-01-01", //开始日期
+  "startHour": "10", //开始小时
+  "endDate": "2025-02-01", //结束日期
+  "endHour": "12" //结束小时
+}
+```
+返回格式
+```bash
+{
+    "code": 200,
+    "data": [
+        {
+            "station_id": "HB102",
+            "total_flow": "6136"
+        },
+        {
+            "station_id": "JC115",
+            "total_flow": "5658"
+        },
+        {
+            "station_id": "JC109",
+            "total_flow": "2654"
+        },
+        {
+            "station_id": "HB105",
+            "total_flow": "2640"
+        },
+        {
+            "station_id": "JC066",
+            "total_flow": "2404"
+        },
+        {
+            "station_id": "JC009",
+            "total_flow": "2363"
+        },
+        {
+            "station_id": "HB101",
+            "total_flow": "2335"
+        },
+        {
+            "station_id": "HB609",
+            "total_flow": "2240"
+        },
+        {
+            "station_id": "HB603",
+            "total_flow": "2233"
+        },
+        {
+            "station_id": "JC116",
+            "total_flow": "2099"
+        }
+    ]
+}
+```
