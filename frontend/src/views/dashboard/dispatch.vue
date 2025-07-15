@@ -295,12 +295,17 @@ function getCurrentHourString() {
  * 登出功能
  */
 const logout = async () => {
+  const confirmed = window.confirm('确定要退出登录吗？')
+  if (!confirmed) {
+    // 用户取消退出
+    return
+  }
+
   try {
     await request.post('/api/user/logout')
   } catch (error) {
     console.warn('登出失败，可忽略', error)
   } finally {
-    // 清除所有 sessionStorage 项
     sessionStorage.clear()
     router.push('/login')
   }

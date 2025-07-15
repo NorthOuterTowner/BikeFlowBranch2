@@ -83,8 +83,15 @@ const account = ref('')
 const email = ref('')
 const newAccount = ref('')
 const message = ref('')
+const newPassword = ref('')
 
 const logout = async () => {
+  const confirmed = window.confirm('确定要退出登录吗？')
+  if (!confirmed) {
+    // 用户取消退出
+    return
+  }
+
   try {
     await request.post('/api/user/logout')
   } catch (error) {
@@ -124,7 +131,7 @@ async function reserPassword(email, newPassword) {
 
 const handleResetPassword = async () => {
   console.log('handleResetPassword 调用')
-  if (!newAccount.value.trim()) {
+  if (!newPassword.value.trim()) {
     message.value = '请输入新密码'
     console.log('新密码为空，退出')
     return
@@ -137,11 +144,11 @@ const handleResetPassword = async () => {
       console.log('未绑定邮箱，退出')
       return
     }
-    const res = await reserPassword(emailValue, newAccount.value.trim())
+    const res = await reserPassword(emailValue, newPassword.value.trim()) 
     console.log('接口返回:', res)
     if (res.data.status === 200) {
       message.value = res.data.msg || '请在邮箱确认修改密码'
-      newAccount.value = ''
+      newPassword.value = ''
     } else {
       message.value = res.data.msg || '密码重置失败'
       console.log('接口返回失败:', res.data)
@@ -151,6 +158,7 @@ const handleResetPassword = async () => {
     console.error('请求异常:', error)
   }
 }
+
 
 const handleResetAccount = async () => {
   console.log('handleResetAccount 调用')

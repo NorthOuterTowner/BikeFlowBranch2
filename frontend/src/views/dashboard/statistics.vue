@@ -132,32 +132,31 @@ const initDefaultDates = () => {
   startHour.value = '00'
   endHour.value = '23'
 }
-
 const showTable = ref(false)
 
-const flowData = ref({ inflow: 0, outflow: 0, total: 0 })
-const pieCanvas = ref(null)
-let pieChartInstance = null
-
-const fetchFlowSummaryByHour = async (dateStr, hourStr) => {
-  try {
-    const res = await request.post('/statistics/flow/time', {
-      startDate: dateStr,
-      startHour: hourStr,
-      endDate: dateStr,
-      endHour: hourStr
-    })
-    if (res.data.code === 200) {
-      return res.data.data?.total || 0 // 返回该小时总流量，接口需返回 total 字段
-    } else {
-      console.warn('获取小时流量失败', dateStr, hourStr)
-      return 0
+const fetchFlowSummaryByHour = async (queryTime, retries = 3, delay = 500) => {
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      const res = await request.get('/statistics/flow/hour', {
+        params: { query_time: queryTime }
+      })
+      if (res.data) {
+        return res.data.total_flow || 0
+      }
+    } catch (e) {
+      if (e.response?.status === 429) {
+        console.warn(`限流，第 ${attempt + 1} 次重试...`)
+        await new Promise(r => setTimeout(r, delay)) // 等待一段时间再重试
+      } else {
+        console.error('请求失败:', e)
+        break // 非限流错误就不重试了
+      }
     }
-  } catch (e) {
-    console.error('获取小时流量异常', e)
-    return 0
   }
+  console.warn(`超过重试次数，跳过时间点 ${queryTime}`)
+  return 0
 }
+
 
 const generateHourRange = (startDateStr, startHourStr, endDateStr, endHourStr) => {
   const start = new Date(`${startDateStr}T${startHourStr}:00:00`)
@@ -185,18 +184,25 @@ const fetchHourlyFlowData = async () => {
   hourlyFlowData.value = []
   loading.value = true
 
-  for (const [dateStr, hourStr] of hourList) {
-    const flow = await fetchFlowSummaryByHour(dateStr, hourStr)
+  for (let i = 0; i < hourList.length; i++) {
+    const [dateStr, hourStr] = hourList[i]
+    const queryTime = `${dateStr}T${hourStr}:00:00Z`
+    const flow = await fetchFlowSummaryByHour(queryTime)
+    
     hourlyFlowData.value.push({
-      time: `${dateStr.slice(5)} ${hourStr}:00`, // MM-DD HH:00格式
+      time: `${dateStr.slice(5)} ${hourStr}:00`,
       flow
     })
+
+    // 节流：避免被限流（可调成 300ms）
+    await new Promise(resolve => setTimeout(resolve, 250))
   }
 
   loading.value = false
   await nextTick()
   renderLineChart()
 }
+
 const lineCanvas = ref(null)
 let lineChartInstance = null
 
@@ -380,6 +386,12 @@ const renderChart = () => {
 
 // 登出功能
 const logout = async () => {
+  const confirmed = window.confirm('确定要退出登录吗？')
+  if (!confirmed) {
+    // 用户取消退出
+    return
+  }
+
   try {
     await request.post('/api/user/logout')
   } catch (error) {
