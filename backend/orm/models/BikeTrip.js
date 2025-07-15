@@ -1,5 +1,5 @@
 module.exports = (sequelize,DataTypes) => {
-  const bikeTrip = sequelize.define('bikeTrip', {
+  const BikeTrip = sequelize.define('BikeTrip', {
     id: {
       type: DataTypes.INTEGER,
       primaryKey: true,
@@ -71,5 +71,5 @@ module.exports = (sequelize,DataTypes) => {
     timestamps: false
   });
 
-  return StationHourlyFlow;
+  return BikeTrip;
 };

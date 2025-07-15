@@ -1,88 +1,164 @@
 const express = require('express');
 const router = express.Router();
+// 引入你的原生 SQL 查询工具，这行是正确的
 const { db } = require('../db/dbUtils');
-const sequelize = require('../orm/sequelize'); // 确保路径正确
-const { DataTypes } = require('sequelize')
-const StationModel = require('../orm/models/Station');
-const Station = StationModel(sequelize,DataTypes)
-const axios = require('axios'); // 需要引入axios来调用外部API
-
-const authMiddleware = require("../utils/auth")
-
-
-// /**
-//  * 根据站点数据生成给AI的提示词 (Prompt)
-//  * @param {Array} stationData - 从数据库获取的站点数据
-//  * @param {string} targetTimeISO - ISO格式的目标时间字符串
-//  * @returns {Array} - 符合DeepSeek API格式的messages数组
-//  */
-// function generateSchedulingPrompt(stationData, targetTimeISO) {
-//     // 将站点数据格式化为易于AI阅读的字符串
-//     const formattedStationData = JSON.stringify(stationData, null, 2);
-//
-//     // 这是提示词工程的核心部分
-//     const prompt = `
-// 你是一个智能城市共享单车调度系统的AI专家。
-// 你的任务是根据当前各站点的车辆数和对未来的预测，生成一个高效的车辆调度计划，以解决“潮汐现象”导致的部分站点车辆堆积和部分站点无车可用的问题。
-//
-// 【调度目标时间】: ${targetTimeISO}
-//
-// 【各站点数据】:
-// 以下是各站点的实时数据和预测数据。
-// "capacity": 站点总容量
-// "current_bikes": 当前车辆数
-// "predicted_bikes_at_target": 在目标时间点的预测车辆数
-//
-// ${formattedStationData}
-//
-// 【你的任务】:
-// 1. 分析以上数据，找出哪些站点在目标时间点可能会出现车辆“溢出”（预测车辆数 > 容量），哪些站点可能会“枯竭”（预测车辆数 < 5 或远低于需求）。
-// 2. 生成一个或多个具体的调度任务来平衡车辆分布。
-// 3. 你的建议必须是可执行的，即从一个站点调出的车辆数不能超过该站点的可用车辆数，调入一个站点的车辆数不能使该站点超过其容量。
-//
-// 【输出格式】:
-// 请严格按照以下JSON格式返回你的调度建议列表。不要包含任何JSON格式之外的解释性文字。
-//
-// [
-//   {
-//     "from_station_id": number, // 车辆调出站点的ID
-//     "from_station_name": "string", // 车辆调出站点的名称
-//     "to_station_id": number, // 车辆调入站点的ID
-//     "to_station_name": "string", // 车辆调入站点的名称
-//     "bikes_to_move": number, // 建议调度的单车数量
-//     "reason": "string" // 调度的理由，例如：'缓解JVL517站点的车辆堆积风险，并补充JXL101站点的车辆需求。'
-//   }
-// ]
-// `;
-//
-//     return [{ role: 'user', content: prompt }];
-// }
+const axios = require('axios');
+const authMiddleware = require("../utils/auth");
 
 /**
- * @route   GET /suggestions/dispatch
- * @desc    根据预测时间和站点数据，从AI获取单车调度建议
- * @access  Private (需要认证)
+ * [已重构] 使用原生 SQL 聚合为 AI 提供决策所需的所有数据
+ * @param {Date} targetTime - 目标时间
+ * @returns {Promise<Object>} 包含站点数据和现有调度计划的对象
  */
-router.get('/dispatch', authMiddleware, async (req, res) => {
-    // 1. 获取并验证请求参数
-    const { target_time,request } = req.query;
+async function getComprehensiveDataForAI(targetTime) {
+    const dateForQuery = targetTime.toISOString().slice(0, 10);
+    const hourForQuery = Math.floor(targetTime.getUTCHours() / 3) * 3;
+
+    // 1. 构建聚合查询 SQL
+    const stationDataSQL = `
+        SELECT
+            s.station_id,
+            s.station_name,
+            s.capacity,
+            r.stock AS real_stock,
+            h.inflow AS predicted_inflow,
+            h.outflow AS predicted_outflow
+        FROM
+            station_info s
+        LEFT JOIN
+            station_real_data r ON s.station_id = r.station_id
+                               AND r.date = ?
+                               AND r.hour = ?
+        LEFT JOIN
+            station_hourly_status h ON s.station_id = h.station_id
+                                    AND h.date = ?
+                                    AND h.hour = ?
+    `;
+
+    // 2. 查询当前调度计划的 SQL
+    const scheduleSQL = `
+        SELECT
+            start_id,
+            end_id,
+            bikes
+        FROM
+            station_schedule
+        WHERE
+            date = ? AND hour = ?
+    `;
+
+    // 3. 【核心修改】使用 db.async.all 并行执行查询
+    const [stationDataResponse, scheduleDataResponse] = await Promise.all([
+        db.async.all(stationDataSQL, [dateForQuery, hourForQuery, dateForQuery, hourForQuery]),
+        db.async.all(scheduleSQL, [dateForQuery, hourForQuery])
+    ]);
+
+    // 从返回的对象中提取 rows 数组
+    const stationDataResult = stationDataResponse.rows;
+    const scheduleData = scheduleDataResponse.rows;
+
+    // 4. 在 Node.js 中处理数据（这部分逻辑不变）
+    const scheduleChangeMap = new Map();
+    scheduleData.forEach(schedule => {
+        scheduleChangeMap.set(schedule.start_id, (scheduleChangeMap.get(schedule.start_id) || 0) - schedule.bikes);
+        scheduleChangeMap.set(schedule.end_id, (scheduleChangeMap.get(schedule.end_id) || 0) + schedule.bikes);
+    });
+
+    const comprehensiveStationData = stationDataResult.map(station => {
+        const scheduleChange = scheduleChangeMap.get(station.station_id) || 0;
+
+        const real_stock = station.real_stock;
+        const predicted_inflow = station.predicted_inflow || 0;
+        const predicted_outflow = station.predicted_outflow || 0;
+
+        let stock_after_schedule = null;
+        if (real_stock !== null && real_stock !== undefined) {
+            stock_after_schedule = real_stock + predicted_inflow - predicted_outflow + scheduleChange;
+        }
+
+        return {
+            ...station,
+            stock_after_schedule: stock_after_schedule
+        };
+    });
+
+    return {
+        stationData: comprehensiveStationData,
+        existingSchedule: scheduleData
+    };
+}
+
+
+// generateOptimizationPrompt 函数保持不变
+function generateOptimizationPrompt(stationData, existingSchedule, userGuidance, targetTimeISO) {
+    // ... (此函数无需修改)
+    const formattedStationData = JSON.stringify(stationData, null, 2);
+    const formattedExistingSchedule = JSON.stringify(existingSchedule, null, 2);
+
+    const userGuidanceSection = userGuidance
+        ? `
+【用户特别指令】
+请在优化时重点考虑以下用户提出的要求：
+"${userGuidance}"
+`
+        : '';
+
+    const prompt = `
+你是一位顶级的共享单车调度优化专家。
+
+【分析背景】
+- 目标调度时间: ${targetTimeISO}
+- 我已经为你预先计算好了在执行“现有调度计划”后，每个站点的预期车辆数。
+${userGuidanceSection}
+【预计算后的站点状态】
+这是关键决策数据。
+- "capacity": 站点总容量
+- "stock_after_schedule": 在目标时间点，执行完现有调度计划后的最终预测车辆数。
+
+${formattedStationData}
+
+【供参考的现有调度计划】
+这是我们预计算时使用的原始计划。
+${formattedExistingSchedule}
+
+【你的核心任务】
+1. 首先，理解并尊重【用户特别指令】（如果提供的话）。
+2. 然后，分析【预计算后的站点状态】，找出哪些站点的 "stock_after_schedule" 存在问题（例如，远超容量导致溢出，或低于5辆导致枯竭）。
+3. 结合以上所有信息，给出一个你认为**最终、最优**的调度计划来解决这些问题。
+
+【输出格式】
+请严格按照以下JSON格式返回你的优化建议。最终的JSON对象必须只包含一个名为 "optimized_plan" 的键，其值为一个调度任务数组。如果认为无需调度，可以返回空数组。不要添加任何额外的解释性文字。
+
+{
+  "optimized_plan": [
+    {
+      "from_station_id": "string",
+      "to_station_id": "string",
+      "bikes_to_move": number,
+      "reason": "string"
+    }
+  ]
+}
+`;
+    return [{ role: 'user', content: prompt }];
+}
+
+
+router.post('/dispatch', authMiddleware, async (req, res) => {
+    const { target_time, user_guidance } = req.body;
     if (!target_time) {
         return res.status(400).json({ error: '请求失败，缺少 "target_time" 参数。' });
     }
 
     try {
-        // // 2. 从数据库获取所需数据
-        // const stationData = await getStationDataForAI(new Date(target_time));
-        // if (!stationData || stationData.length === 0) {
-        //     return res.status(404).json({ message: '未找到足够的站点数据用于分析。' });
-        // }
-        //
-        // // 3. 生成提示词 (Prompt)
-        // const messages = generateSchedulingPrompt(stationData, target_time);
-        const messages = [{ role: 'user', content: request }];
-        // 4. 调用DeepSeek API
-        // 从环境变量中获取API密钥，这是最佳实践
-        const apiKey = 'sk-fa73fa4c4eaf402b9e770ee92cbc0dbf';
+        const { stationData, existingSchedule } = await getComprehensiveDataForAI(new Date(target_time));
+        if (!stationData || stationData.length === 0) {
+            return res.status(404).json({ message: '未找到足够的站点数据用于分析。' });
+        }
+
+        const messages = generateOptimizationPrompt(stationData, existingSchedule, user_guidance, target_time);
+
+        const apiKey = 'sk-fa73fa4c4eaf402b9e770ee92cbc0dbf'; // 建议从环境变量读取 process.env.DEEPSEEK_API_KEY
         if (!apiKey) {
             console.error('错误: DEEPSEEK_API_KEY 环境变量未设置。');
             return res.status(500).json({ error: '服务器配置错误。' });
@@ -93,8 +169,8 @@ router.get('/dispatch', authMiddleware, async (req, res) => {
             {
                 model: 'deepseek-chat',
                 messages: messages,
-                temperature: 0.5, // 对于需要精确结果的任务，温度可以设低一些
-                response_format: { type: "json_object" } // 请求JSON格式输出，提高稳定性
+                temperature: 0.5,
+                response_format: { type: "json_object" }
             },
             {
                 headers: {
@@ -104,25 +180,95 @@ router.get('/dispatch', authMiddleware, async (req, res) => {
             }
         );
 
-        // 5. 将AI的响应返回给前端
-        // DeepSeek的JSON模式会把结果包在 "choices"[0]."message"."content" 里，它是一个字符串
-        // 我们需要先解析这个字符串再返回给前端
         const aiContent = JSON.parse(response.data.choices[0].message.content);
-        res.json(aiContent);
+
+        const finalResponse = {
+            schedule_time: target_time,
+            optimized_plan: aiContent.optimized_plan || []
+        };
+
+        res.json(finalResponse);
 
     } catch (err) {
-        // 统一的错误处理
         if (err.isAxiosError) {
-            // AI API调用相关的错误
             console.error('调用 DeepSeek API 出错:', err.response?.data || err.message);
-            res.status(502).json({ error: '调用AI服务失败。' }); // 502 Bad Gateway 更合适
+            res.status(502).json({ error: '调用AI服务失败。' });
         } else {
-            // 数据库或其他内部错误
             console.error('处理调度建议请求时发生错误:', err);
             res.status(500).json({ error: '服务器内部错误。' });
         }
     }
 });
 
+/**
+ * @api {post} /api/v1/suggestions 与AI对话获取建议
+ * @apiDescription 提供一个通用的对话接口，前端可以发送任何与系统相关的问题，
+ *                 由AI提供分析和建议。
+ * @access Private
+ */
+router.post('/', authMiddleware, async (req, res) => {
+    // 1. 从请求体中获取用户的提问
+    const { message } = req.body;
+
+    // 2. 参数校验
+    if (!message || typeof message !== 'string' || message.trim() === '') {
+        return res.status(400).json({ error: '请求失败，"message" 参数不能为空。' });
+    }
+
+    try {
+        // 3. 为AI设定角色，以获取更相关的回答 (System Prompt)
+        const messages = [
+            {
+                role: 'system',
+                content: '你是一个专业的共享单车运营分析师和调度系统助手。请根据用户的问题，提供专业、具体、可行的分析和建议。'
+            },
+            {
+                role: 'user',
+                content: message
+            }
+        ];
+
+        // 4. 从环境变量中获取API密钥
+        const apiKey = process.env.DEEPSEEK_API_KEY || 'sk-fa73fa4c4eaf402b9e770ee92cbc0dbf'; // 请替换或使用环境变量
+        if (!apiKey) {
+            console.error('错误: DEEPSEEK_API_KEY 环境变量未设置。');
+            return res.status(500).json({ error: '服务器配置错误。' });
+        }
+
+        // 5. 发起对 DeepSeek API 的请求
+        const response = await axios.post(
+            'https://api.deepseek.com/v1/chat/completions',
+            {
+                model: 'deepseek-chat',
+                messages: messages,
+                temperature: 0.7, // 中等温度，平衡准确性与创造性
+            },
+            {
+                headers: {
+                    'Authorization': `Bearer ${apiKey}`,
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
+
+        // 6. 提取并返回 AI 的回复
+        const aiReply = response.data.choices[0].message.content;
+
+        res.json({
+            original_prompt: message,
+            suggestion: aiReply
+        });
+
+    } catch (err) {
+        // 统一的错误处理
+        if (err.isAxiosError) {
+            console.error('调用 DeepSeek API 出错:', err.response?.data || err.message);
+            res.status(502).json({ error: '调用AI服务失败。' });
+        } else {
+            console.error('处理建议请求时发生错误:', err);
+            res.status(500).json({ error: '服务器内部错误。' });
+        }
+    }
+});
 
 module.exports = router;

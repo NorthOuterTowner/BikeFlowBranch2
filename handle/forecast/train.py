@@ -18,7 +18,7 @@ torch.cuda.empty_cache()
 timesteps = 24
 predict_steps = 1
 num_features = 2
-num_epochs = 20  # 增加epoch数量
+num_epochs = 50  # 增加epoch数量
 batch_size = 8  # 增大batch size
 learning_rate = 0.001
 
