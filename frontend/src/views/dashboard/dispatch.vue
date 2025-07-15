@@ -70,7 +70,7 @@ const selectedDispatch = ref(null)
 const loading = ref(false)
 let navigationLayer = null
 
-const topPanelHeight = ref(300) // 初始高度
+const topPanelHeight = ref(170) // 初始高度
 const minHeight = 100
 const maxHeight = 600
 let isResizing = false
@@ -405,14 +405,6 @@ function highlightStationsOnMap(stations) {
 function drawDispatchPlanOnMap(plan) {
   console.log('绘制 item:', plan)
 
-  // const startLng = parseFloat(plan.start_station.lng)
-  // const startLat = parseFloat(plan.start_station.lat)
-  // const endLng = parseFloat(plan.end_station.lng)
-  // const endLat = parseFloat(plan.end_station.lat)
-
-  // const startCoord = fromLonLat([startLng, startLat])
-  // const endCoord = fromLonLat([endLng, endLat])
-
   if (!vectorLayer) {
     console.warn('矢量图层未初始化。')
     return
@@ -445,15 +437,6 @@ function drawDispatchPlanOnMap(plan) {
         fromLonLat([item.end_station.lng, item.end_station.lat])
       ])
     })
-    //     // startFeature
-    // console.log('startFeature geometry:', startFeature.getGeometry().getCoordinates())
-
-    // // endFeature
-    // console.log('endFeature geometry:', endFeature.getGeometry().getCoordinates())
-
-    // // lineFeature
-    // console.log('lineFeature geometry:', lineFeature.getGeometry().getCoordinates())
-
     // 如果是选中的方案，线条样式更粗/颜色不同
     if (selectedPlan.value && selectedPlan.value.schedule_id === item.schedule_id) {
       lineFeature.setStyle(new Style({
@@ -468,15 +451,18 @@ function drawDispatchPlanOnMap(plan) {
     features.push(lineFeature)
   })
 
-  vectorLayer.getSource().addFeatures(features)
-  if (features.length) {
-    const extent = vectorLayer.getSource().getExtent()
-    mapInstance.getView().fit(extent, { padding: [50,50,50,50], duration: 1000, maxZoom: 16 })
-  }
+    vectorLayer.getSource().addFeatures(features)
+    if (features.length) {
+      const extent = vectorLayer.getSource().getExtent()
+      mapInstance.getView().fit(extent, { padding: [50,50,50,50], duration: 1000, maxZoom: 16 })
+    }
+    // 返回当前选中方案的线条 Feature，供外面去做 fit
+    const selectedLine = features.find(f =>
+        f.getGeometry() instanceof LineString &&
+        selectedPlan.value && selectedPlan.value.schedule_id === plan.schedule_id
+      );
 
-//   console.log('=== 准备添加要素 ===')
-//   console.log('当前 view center:', mapInstance.getView().getCenter())
-// console.log('当前 zoom:', mapInstance.getView().getZoom())
+    return selectedLine || null;
 }
 
 /**
@@ -484,7 +470,10 @@ function drawDispatchPlanOnMap(plan) {
  */
 const selectPlan = (plan) => {
   selectedPlan.value = plan
-  drawDispatchPlanOnMap(plan)
+  if (navigationLayer) {
+    navigationLayer.getSource().clear()
+  }
+  const newLineFeature = drawDispatchPlanOnMap(plan);
 
   if (plan.start_station && plan.end_station) {
     const startLng = parseFloat(plan.start_station.lng)
@@ -499,12 +488,15 @@ const selectPlan = (plan) => {
     const tempLine = new LineString([start, end])
     const extent = tempLine.getExtent()
 
-    // 用 fit
-    mapInstance.getView().fit(extent, {
-      padding: [100,100,100,100],
-      duration: 500,
-      maxZoom: 16
-    })
+    // 确保新线条存在后再做 fit
+    if (newLineFeature && newLineFeature.getGeometry()) {
+      const extent = newLineFeature.getGeometry().getExtent();
+      mapInstance.getView().fit(extent, {
+        padding: [100, 100, 100, 100],
+        duration: 500,
+        maxZoom: 16
+      });
+    }
   } else {
     console.warn('plan.start_station 或 plan.end_station 不存在！')
   }
@@ -712,8 +704,6 @@ function focusStationOnMap(station) {
     console.warn('地图未初始化或站点缺少经纬度信息。', { mapInstance, station });
   }
 }
-
-
 </script>
 
 <template>
@@ -833,6 +823,19 @@ function focusStationOnMap(station) {
 
       <div class="map-panel">
         <div ref="mapContainer" class="map"></div>
+        <div class="highlight-info-panel" v-if="showHighlight && highlightStationList.length">
+      <h4>调出站点</h4>
+      <ul>
+        <li
+          v-for="station in highlightStationList"
+          :key="station.station_name"
+          @click="focusStationOnMap(station)"
+          style="cursor: pointer;"
+        >
+          {{ station.station_name }}
+        </li>
+      </ul>
+    </div>
 
         <div v-if="navigationActive" class="navigation-info-panel">
           <div class="navigation-header">
@@ -930,23 +933,6 @@ function focusStationOnMap(station) {
   border-right: 1px solid #ccc;
 }
 
-/* 原本的 dispatch-list-panel 改成右侧列表 */
-/* .dispatch-list-panel {
-  flex: 1;
-  overflow: auto;
-  background-color: #fafafa;
-  padding: 10px;
-  box-sizing: border-box;
-} */
-
-/* 下方地图 */
-/* .map {
-  position: absolute;
-  top: 0; bottom: 0; left: 0; right: 0;
-  width: 100%;
-  height: 100%;
-} */
-
 .plan-table {
   width: 100%;
   border-collapse: collapse; /* 合并边框 */
@@ -988,18 +974,6 @@ function focusStationOnMap(station) {
   gap: 8px;
   margin-bottom: 10px;
 }
-
-/* .status-btn {
-  padding: 6px 14px;
-  border: 1px solid #007bff;
-  background-color: #f8f9fa;
-  color: #007bff;
-  cursor: pointer;
-  border-radius: 4px;
-  font-weight: 500;
-  transition: background-color 0.3s ease;
-  white-space: nowrap;
-} */
 .status-btn {
   padding: 6px 12px;
   border: none;
@@ -1080,7 +1054,7 @@ function focusStationOnMap(station) {
 
 .highlight-info-panel {
   position: absolute;
-  top: 70px;
+  top: 130px;
   right: 10px;
   width: 220px;
   max-height: 300px;
