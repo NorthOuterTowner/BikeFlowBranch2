@@ -121,8 +121,8 @@ if __name__ == "__main__":
     print_available_times()
     
     # 示例：绘制特定站点的趋势图（修改为您的目标站点ID）
-    target_station = "HB102"  # 替换为您的站点ID
-    start_date = "2025-05-15"  # 可选，开始日期
+    target_station = "HB611"  # 替换为您的站点ID
+    start_date = "2025-05-13"  # 可选，开始日期
     end_date = "2025-05-21"    # 可选，结束日期
     
     plot_station_trend(target_station, start_date, end_date)
