@@ -85,6 +85,12 @@ const newAccount = ref('')
 const message = ref('')
 
 const logout = async () => {
+  const confirmed = window.confirm('确定要退出登录吗？')
+  if (!confirmed) {
+    // 用户取消退出
+    return
+  }
+
   try {
     await request.post('/api/user/logout')
   } catch (error) {
