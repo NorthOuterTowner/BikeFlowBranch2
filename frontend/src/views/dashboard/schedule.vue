@@ -19,6 +19,7 @@ import Icon from 'ol/style/Icon'
 import Text from 'ol/style/Text'
 import {Zoom } from 'ol/control'
 import StationInfo from '../dashboard/predictStationInf.vue'
+import { c } from 'naive-ui'
 
 const mapContainer = ref(null)
 let mapInstance = null
@@ -58,17 +59,12 @@ const tooltipPosition = ref({ x: 0, y: 0 })
 const fixedDate = computed(() => {
   return localStorage.getItem('selectedDate') || new Date().toISOString().split('T')[0]
 })
-const currentHour = getCurrentHourString()
+const currentHour = localStorage.getItem('selectedHour')
 
 // 在调度方案相关状态部分添加
 const dispatchLoading = ref(false) // 调度数据加载状态
 const dispatchError = ref(null) // 调度数据加载错误
 
-function getCurrentHourString() {
-  const now = new Date()
-  const hour = now.getHours().toString().padStart(2, '0')
-  return `${hour}:00`
-}
 /**
  * 获取调度方案数据
  * @param {string} queryTime - 查询时间，ISO 8601格式
