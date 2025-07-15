@@ -144,7 +144,6 @@ ${formattedExistingSchedule}
 }
 
 
-// API 路由处理函数保持不变
 router.post('/dispatch', authMiddleware, async (req, res) => {
     // --- 已修改：从 req.body 获取参数 ---
     const { target_time, user_guidance } = req.body;
