@@ -21,6 +21,11 @@ for lag in [1, 2, 3]:
     raw[f'inflow_lag_{lag}'] = raw.groupby('station_id')['inflow'].shift(lag)
     raw[f'outflow_lag_{lag}'] = raw.groupby('station_id')['outflow'].shift(lag)
 
+# 处理天气特征 - 填充可能的缺失值
+weather_cols = ['temp', 'prcp', 'wspd']
+for col in weather_cols:
+    raw[col] = raw[col].fillna(raw[col].median())
+
 # 删除包含 NaN 的行（lag 或 next 可能为空）
 raw = raw.dropna(subset=['inflow_next', 'outflow_next',
                          'inflow_lag_1', 'inflow_lag_2', 'inflow_lag_3',
