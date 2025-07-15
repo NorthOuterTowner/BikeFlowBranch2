@@ -668,13 +668,13 @@ endCoord
     ]
 }
 ```
-（3）获取top10站点及其流量（GET）
+（3）获取某一时间点总流量（GET）
 ```bash
-/statistics/top10
+/statistics/flow/hour
 ```
 请求格式
 ```bash
-
+query_time	String	要查询的整点时间，ISO 8601格式。分钟、秒和毫秒必须为0。	"2025-01-21T08:00:00Z"
 ```
 返回格式
 ```bash

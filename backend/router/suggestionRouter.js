@@ -201,7 +201,7 @@ router.post('/dispatch', authMiddleware, async (req, res) => {
 });
 
 /**
- * @api {post} /api/v1/suggestions 与AI对话获取建议
+ * @api {post} /suggestions 与AI对话获取建议
  * @apiDescription 提供一个通用的对话接口，前端可以发送任何与系统相关的问题，
  *                 由AI提供分析和建议。
  * @access Private

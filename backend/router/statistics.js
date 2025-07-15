@@ -143,4 +143,77 @@ router.post("/top", authMiddleware, async (req, res) => {
         });
     }
 });
+
+/**
+ * @api {get} /flow/hour 查询小时总流量
+ * @apiDescription 传入一个整点时间，返回该小时内系统中所有站点的总流入、总流出和总流量。
+ * @access Private
+ */
+router.get('/flow/hour', authMiddleware, async (req, res) => {
+    // 1. 从请求查询参数中获取时间点
+    const { query_time } = req.query;
+
+    // 2. 参数校验
+    if (!query_time) {
+        return res.status(400).json({ error: '请求失败，缺少 "query_time" 参数。' });
+    }
+
+    const queryDate = new Date(query_time);
+    if (isNaN(queryDate.getTime())) {
+        return res.status(400).json({ error: '无效的时间格式。请使用 ISO 8601 格式。' });
+    }
+    // 校验是否为整点时间
+    if (queryDate.getUTCMinutes() !== 0 || queryDate.getUTCSeconds() !== 0 || queryDate.getUTCMilliseconds() !== 0) {
+        return res.status(400).json({ error: '请求的时间点必须为整点时间。' });
+    }
+
+    try {
+        // 3. 准备SQL查询
+        // 使用 SUM() 聚合函数来计算总和
+        const sql = `
+            SELECT
+                SUM(inflow) AS total_inflow,
+                SUM(outflow) AS total_outflow
+            FROM
+                station_hourly_flow
+            WHERE
+                timestamp = ?;
+        `;
+
+        // 格式化时间以匹配数据库的 DATETIME 类型
+        // 'YYYY-MM-DD HH:MM:SS'
+        const timestampForQuery = queryDate.toISOString().slice(0, 19).replace('T', ' ');
+        const params = [timestampForQuery];
+
+        // 4. 执行查询
+        const { rows } = await db.async.all(sql, params);
+
+        // 5. 处理并返回结果
+        if (!rows || rows.length === 0 || rows[0].total_inflow === null) {
+            // 如果查询结果为空 (SUM返回null)，说明该小时没有流量数据
+            return res.json({
+                query_time: query_time,
+                total_inflow: 0,
+                total_outflow: 0,
+                total_flow: 0
+            });
+        }
+
+        const result = rows[0];
+        const totalInflow = parseInt(result.total_inflow, 10);
+        const totalOutflow = parseInt(result.total_outflow, 10);
+
+        res.json({
+            query_time: query_time,
+            total_inflow: totalInflow,
+            total_outflow: totalOutflow,
+            total_flow: totalInflow + totalOutflow // 总流量 = 总流入 + 总流出
+        });
+
+    } catch (err) {
+        console.error('Hourly Flow API Error:', err);
+        res.status(500).json({ error: '服务器内部错误。' });
+    }
+});
+
 module.exports = router
