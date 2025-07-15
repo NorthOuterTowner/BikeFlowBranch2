@@ -534,7 +534,7 @@ endCoord
 }
 ```
 
-9.统计数据
+10.统计数据
 （1）指定时间段总流量（POST）
 ```bash
 /statistics/flow/time
