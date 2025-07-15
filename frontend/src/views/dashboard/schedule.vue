@@ -366,7 +366,7 @@ async function toggleDispatchLayerWithAPI() {
     // 显示调度图层
     if (dispatchPlans.value.length === 0) {
       // 构建查询时间
-      const queryTime = buildQueryTime(fixedDate.value, '09:00')
+      const queryTime = buildQueryTime(fixedDate.value, currentHour)
       
       // 获取真实的调度方案数据
       await fetchDispatchPlans(queryTime)
@@ -1123,6 +1123,15 @@ defineExpose({
   display: flex;
   align-items: center;
   gap: 12px;
+}
+.dispatch-toggle-btn {
+  padding: 8px 16px;
+  background-color: #091275;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s, transform 0.2s;
 }
 .dispatch-toggle-btn:disabled {
   opacity: 0.6;
