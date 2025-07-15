@@ -12,26 +12,10 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/predict': {
+      '^/(predict|stations|dispatch|api|guide|suggestions)': {
         target: 'http://localhost:3000',
         changeOrigin: true
-      },
-      '/stations': {
-        target: 'http://localhost:3000',
-        changeOrigin: true
-      },
-      '/dispatch': {
-        target: 'http://localhost:3000',  // 换成后端实际地址和端口
-        changeOrigin: true,
-      },
-      '/api': {
-        target: 'http://localhost:3000',
-        changeOrigin: true,
-      },
-      '/guide': { 
-        target: 'http://localhost:3000', 
-        changeOrigin: true 
-      }, 
-    } 
+      }
+    }
   }
 })

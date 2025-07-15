@@ -1,6 +1,8 @@
 <script setup>
 import { ref, computed, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
+import { postSuggestion } from '../../api/axios'
+import request from '@/api/axios'
 
 const router = useRouter()
 
@@ -12,10 +14,8 @@ const currentHour = computed(() => new Date().getHours() + ':00')
 // 对话内容
 const newMessage = ref('')
 const messages = ref([
-  { sender: 'ai', text: '你好！我是DeepSeek智能助手。请问有什么可以帮您？' },
-  { sender: 'user', text: '我正在开发一个接入DeepSeek的项目，有什么建议？' },
-  { sender: 'ai', text: '建议：1. 简洁UI；2. 区分用户与AI消息；3. 添加API配置区域等。' }
-])
+  { sender: 'ai', text: '你好！我是DeepSeek智能助手。请问有什么可以帮您？' }
+  ])
 
 // 聊天消息容器
 const chatMessages = ref(null)
@@ -45,25 +45,24 @@ const scrollToBottom = () => {
   })
 }
 
-// 发送消息
-const sendMessage = () => {
+const sendMessage = async () => {
   const text = newMessage.value.trim()
   if (!text) return
 
   messages.value.push({ sender: 'user', text })
   newMessage.value = ''
+  scrollToBottom()
 
-  // 模拟AI回复
-  setTimeout(() => {
-    messages.value.push({ sender: 'ai', text: '这是模拟回复，实际应由API返回。' })
-    nextTick(() => {
-      if (chatMessages.value) {
-        chatMessages.value.scrollTop = chatMessages.value.scrollHeight
-      }
-    })
-  }, 800)
+  const suggestion = await postSuggestion(text)
+  if (suggestion) {
+    messages.value.push({ sender: 'ai', text: suggestion })
+  } else {
+    messages.value.push({ sender: 'ai', text: '抱歉，获取回复失败，请稍后再试。' })
+  }
+
   scrollToBottom()
 }
+
 
 // 退出
 const logout = async () => {
@@ -242,7 +241,7 @@ const logout = async () => {
 
 .user-message {
   align-self: flex-end;
-  text-align: right;
+  text-align: left;
 }
 
 .ai-message {
@@ -298,6 +297,9 @@ const logout = async () => {
   padding: 16px 20px;
   font-size: 14px;
   line-height: 1.5;
+  word-wrap: break-word;
+  word-break: break-word;
+  white-space: normal;
 }
 
 .chat-input-container {
