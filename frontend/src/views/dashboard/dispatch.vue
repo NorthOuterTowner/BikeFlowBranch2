@@ -383,14 +383,8 @@ function drawDispatchPlanOnMap(plan) {
   // const endLng = parseFloat(plan.end_station.lng)
   // const endLat = parseFloat(plan.end_station.lat)
 
-  // console.log('绘制用的 startLng, startLat:', startLng, startLat)
-  // console.log('绘制用的 endLng, endLat:', endLng, endLat)
-
   // const startCoord = fromLonLat([startLng, startLat])
   // const endCoord = fromLonLat([endLng, endLat])
-
-  // console.log('绘制用的转换后 startCoord:', startCoord)
-  // console.log('绘制用的转换后 endCoord:', endCoord)
 
   if (!vectorLayer) {
     console.warn('矢量图层未初始化。')
@@ -466,38 +460,17 @@ const selectPlan = (plan) => {
   drawDispatchPlanOnMap(plan)
 
   if (plan.start_station && plan.end_station) {
-    // console.log('--- 选中的调度方案 ---')
-    // console.log('start_station:', plan.start_station)
-    // console.log('end_station:', plan.end_station)
-
     const startLng = parseFloat(plan.start_station.lng)
     const startLat = parseFloat(plan.start_station.lat)
     const endLng = parseFloat(plan.end_station.lng)
     const endLat = parseFloat(plan.end_station.lat)
 
-    // console.log('原始坐标：')
-    // console.log('Start:', startLng, startLat)
-    // console.log('End:', endLng, endLat)
-
     const start = fromLonLat([startLng, startLat])
     const end = fromLonLat([endLng, endLat])
-
-    // console.log('转换后的坐标：')
-    // console.log('Start:', start)
-    // console.log('End:', end)
 
     // 创建临时 LineString
     const tempLine = new LineString([start, end])
     const extent = tempLine.getExtent()
-
-    //console.log('计算出的 extent:', extent)
-
-    // // 也算一下简单的中心点
-    // const center = [
-    //   (start[0] + end[0]) / 2,
-    //   (start[1] + end[1]) / 2
-    // ]
-    // console.log('简单中心点:', center)
 
     // 用 fit
     mapInstance.getView().fit(extent, {
@@ -505,7 +478,6 @@ const selectPlan = (plan) => {
       duration: 500,
       maxZoom: 16
     })
-    //console.log('执行 fit 到 extent')
   } else {
     console.warn('plan.start_station 或 plan.end_station 不存在！')
   }
@@ -719,7 +691,6 @@ function focusStationOnMap(station) {
 
 <template>
   <div class="app-container">
-    <!-- Header -->
     <header class="app-header">
       <div class="header-left">
         <h1 class="title">共享单车潮汐预测调度详情</h1>
@@ -739,110 +710,100 @@ function focusStationOnMap(station) {
     </header>
 
     <div class="main-content">
-      <!-- 左侧列表面板 -->
-      <div class="dispatch-list-panel">
-        <!-- 状态切换 -->
-        <div class="status-buttons">
-          <button
-            v-for="status in ['全部','待执行','正在执行','已完成']"
-            :key="status"
-            @click="currentStatusFilter = status"
-            :class="['status-btn', currentStatusFilter === status ? 'active' : '']"
-          >
-            {{ status }}
-          </button>
-        </div>
-
-        <!-- 批量操作 -->
-        <div class="button-row">
-          <div class="batch-buttons">
-            <button @click="batchStart">批量采用</button>
-            <button @click="batchCancel">批量撤销</button>
-          </div>
-          <div class="highlight-btn">
-            <button @click="highlightStations">
-              {{ showHighlight ? '隐藏调出站点' : '查看调出站点' }}
+      <div class="top-panel" :style="{ height: topPanelHeight + 'px' }">
+        <div class="left-buttons-panel">
+          <div class="status-buttons">
+            <button
+              v-for="status in ['全部', '待执行', '正在执行', '已完成']"
+              :key="status"
+              @click="currentStatusFilter = status"
+              :class="['status-btn', currentStatusFilter === status ? 'active' : '']"
+            >
+              {{ status }}
             </button>
           </div>
+
+          <div class="button-row">
+            <div class="batch-buttons">
+              <button @click="batchStart">批量采用</button>
+              <button @click="batchCancel">批量撤销</button>
+            </div>
+            <div class="highlight-btn">
+              <button @click="highlightStations">
+                {{ showHighlight ? '隐藏调出站点' : '查看调出站点' }}
+              </button>
+            </div>
+          </div>
         </div>
 
-        <!-- 表格列表 -->
-        <table class="plan-table">
-          <thead>
-            <tr>
-              <th>多选</th>
-              <th>起止站点</th>
-              <th>状态</th>
-              <th>数量</th>
-              <th>操作</th>
-              <th>导航</th>
-            </tr>
-          </thead>
-          
-          <tbody>
-            <tr
-              v-for="item in filteredDispatchList"
-              :key="item.schedule_id"
-              :class="{ selected: selectedPlan && selectedPlan.schedule_id === item.schedule_id }"
-              @click="selectPlan(item)"
-            >
-              <td>
-                <input type="checkbox" v-model="selectedIds" :value="item.schedule_id" @click.stop />
-              </td>
-              <td>{{ item.start_station.name }} → {{ item.end_station.name }}</td>
-              <td>
-                <span 
-                  :class="[
-                    'status-tag',
-                    item.statusInt === '待执行' ? 'status-pending' : '',
-                    item.statusInt === '正在执行' ? 'status-running' : '',
-                    item.statusInt === '已完成' ? 'status-finished' : ''
-                  ]"
-                >
-                  {{ item.statusInt }}
-                </span>
-              </td>
-              <td>{{ item.bikes_to_move ?? '-' }}</td>
-              <td>
-                <button v-if="item.statusInt === '待执行'" @click.stop="handleStart(item)">采用</button>
-                <button v-if="item.statusInt === '正在执行'" @click.stop="handleCancel(item)">撤销</button>
-              </td>
-              <td>
-                <button @click.stop="showNavigation(item)" :disabled="loading">
-                  {{ loading ? '加载中...' : '导航' }}
-                </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-    </div>
+        <div class="dispatch-list-panel">
+          <table class="plan-table">
+            <thead>
+              <tr>
+                <th class="col-checkbox">多选</th>
+                <th class="col-stations">起止站点</th>
+                <th class="col-status">状态</th>
+                <th class="col-number">数量</th>
+                <th class="col-action">操作</th>
+                <th class="col-nav">导航</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="item in filteredDispatchList"
+                :key="item.schedule_id"
+                :class="{ selected: selectedPlan && selectedPlan.schedule_id === item.schedule_id }"
+                @click="selectPlan(item)"
+              >
+                <td class="col-checkbox">
+                  <input type="checkbox" v-model="selectedIds" :value="item.schedule_id" @click.stop />
+                </td>
+                <td class="col-stations">
+                  <div class="station-line">
+                    <div class="station-badge start-station">{{ item.start_station.name }}</div>
+                    <div class="arrow">→</div>
+                    <div class="station-badge end-station">{{ item.end_station.name }}</div>
+                  </div>
+                </td>
+                <td class="col-status">
+                  <span
+                    :class="[
+                      'status-tag',
+                      item.statusInt === '待执行' ? 'status-pending' : '',
+                      item.statusInt === '正在执行' ? 'status-running' : '',
+                      item.statusInt === '已完成' ? 'status-finished' : ''
+                    ]"
+                  >
+                    {{ item.statusInt }}
+                  </span>
+                </td>
+                <td class="col-number">{{ item.bikes_to_move ?? '-' }}</td>
+                <td class="col-action">
+                  <button v-if="item.statusInt === '待执行'" @click.stop="handleStart(item)">采用</button>
+                  <button v-if="item.statusInt === '正在执行'" @click.stop="handleCancel(item)">撤销</button>
+                </td>
+                <td class="col-nav">
+                  <button @click.stop="showNavigation(item)" :disabled="loading">
+                    {{ loading ? '加载中...' : '导航' }}
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
 
+      <div class="resizer" @mousedown="startResize"></div>
 
-    <div class="highlight-info-panel" v-if="showHighlight && highlightStationList.length">
-      <h4>调出站点</h4>
-      <ul>
-        <li
-          v-for="station in highlightStationList"
-          :key="station.station_name"
-          @click="focusStationOnMap(station)"
-          style="cursor: pointer;"
-        >
-          {{ station.station_name }}
-        </li>
-      </ul>
-    </div>
-
-      <!-- 右侧地图面板 -->
       <div class="map-panel">
         <div ref="mapContainer" class="map"></div>
-        
-        <!-- 导航信息面板 -->
+
         <div v-if="navigationActive" class="navigation-info-panel">
           <div class="navigation-header">
             <h3>导航信息</h3>
             <button class="close-btn" @click="clearNavigation">×</button>
           </div>
-          
+
           <div class="navigation-content">
             <div class="route-summary">
               <div class="route-info">
@@ -862,12 +823,12 @@ function focusStationOnMap(station) {
                 <span>{{ routeDuration }} 分钟</span>
               </div>
             </div>
-            
+
             <div class="navigation-instructions">
               <h4>导航指令</h4>
               <div class="instructions-list">
-                <div 
-                  v-for="(instruction, index) in navigationInstructions" 
+                <div
+                  v-for="(instruction, index) in navigationInstructions"
                   :key="index"
                   class="instruction-item"
                 >
@@ -928,38 +889,51 @@ function focusStationOnMap(station) {
   border-bottom: 1px solid #ddd;
   flex-shrink: 0;
 }
-
 .main-content {
-  flex: 1; /* 剩余高度全部占满 */
+  flex: 1;
   display: flex;
-  overflow: hidden; /* 防止溢出 */
+  flex-direction: column; /* 上下布局 */
+  overflow: hidden;
 }
 
-.dispatch-list-panel {
-  width: 400px; /* 固定宽度 */
-  overflow-y: auto;
-  border-right: 1px solid #ccc;
+/* 顶部面板：左右布局 */
+.top-panel {
+  display: flex;
+  flex-direction: row;
+  height: 50%; /* 占上半部分高度，可根据需要调整 */
+  border-bottom: 1px solid #ccc;
+  overflow: hidden;
+}
+
+/* 左侧按钮区 */
+.left-buttons-panel {
+  width: 180px;
+  min-width: 150px;
+  background-color: #f0f2f5;
   padding: 10px;
   box-sizing: border-box;
-  background-color: #fafafa;
+  border-right: 1px solid #ccc;
 }
 
+/* 原本的 dispatch-list-panel 改成右侧列表 */
+.dispatch-list-panel {
+  flex: 1;
+  overflow-y: auto;
+  background-color: #fafafa;
+  padding: 10px;
+  box-sizing: border-box;
+}
+
+/* 下方地图 */
 .map-panel {
-  flex: 1; /* 占据剩余宽度 */
+  flex: 1;
   position: relative;
 }
-
 .map {
   position: absolute;
   top: 0; bottom: 0; left: 0; right: 0;
   width: 100%;
   height: 100%;
-}
-.map-panel :deep(.ol-zoom-custom) {
-  position: absolute;
-  bottom: 20px;
-  right: 20px;
-  z-index: 1000;
 }
 
 .plan-table {
@@ -1263,5 +1237,64 @@ function focusStationOnMap(station) {
   border-radius: 4px;
   border: 1px solid #ccc;
 }
+.station-line {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+
+.station-badge {
+  background-color: #f0f4ff;    /* 浅底色 */
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-weight: 500;
+  color: #333;
+  white-space: nowrap;
+}
+
+.start-station {
+  color: #2c7be5;               /* 蓝色文字 */
+}
+
+.end-station {
+  color: #28a745;               /* 绿色文字 */
+}
+
+.arrow {
+  color: #999;
+  margin: 2px 0;
+}
+/* 设置各列宽度 */
+.col-checkbox {
+  width: 1px;
+  text-align: center;
+}
+
+.col-status {
+  width: 60px;
+  text-align: center;
+}
+
+.col-number {
+  width: 0px;
+  text-align: center;
+}
+
+.col-action {
+  width: 70px;
+  text-align: center;
+}
+
+.col-nav {
+  width: 60px;
+  text-align: center;
+}
+
+/* 起止站点列自动占满剩余空间 */
+.col-stations {
+  min-width: 120px;
+}
+
 
 </style>
