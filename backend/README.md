@@ -332,7 +332,7 @@ status设置为0
 }
 ```
 
-6. 返回调度信息
+6. 调度信息操作
    （1）返回某一时间点所有调度信息（get）
 ```bash
 /dispatch
@@ -433,6 +433,36 @@ date hour
     ]
 }
 ```
+（4）将接受的新调度方案加入（post）
+```bash
+/dispatch/add
+```
+请求格式
+```bash
+{
+  "schedule_time": "2025-06-13T09:00:00Z",
+  "start_station_id": "HB101",
+  "end_station_id": "HB304",
+  "bikes_to_move": 5
+}
+```
+返回格式
+```bash
+{
+    "message": "调度任务已成功添加。",
+    "schedule": {
+        "id": 69,
+        "date": "2025-06-13",
+        "hour": 9,
+        "start_id": "HB101",
+        "end_id": "HB304",
+        "bikes": 5,
+        "status": 0,
+        "updated_at": "2025-07-15T06:49:09.547Z"
+    }
+}
+```
+
 
 7、返回导航信息
    （1）根据站点信息返回导航信息（post）
