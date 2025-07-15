@@ -111,7 +111,7 @@ router.post('/pwd', authMiddleware, async (req, res) => {
 
     const resetUrl = `http://localhost:3000/reset/verify?code=${verifyCode}`;
     
-    const templatePath = path.join(__dirname, '../views/email/resetPasswordEmail.ejs');
+    const templatePath = path.join(__dirname, '../views/resetPasswordEmail.ejs');
     const htmlContent = await ejs.renderFile(templatePath, { resetUrl });
 
     await transporter.sendMail({
@@ -168,17 +168,10 @@ router.get('/verify', async (req, res) => {
 
     await redisClient.del(`reset-password:${code}`);
 
-    return res.status(200).send({
-      code: 200,
-      msg: "密码重置成功"
-    });
+    return res.status(200).render("resetPwdSuccess");
 
   } catch (e) {
-    return res.status(500).send({ 
-      code: 500, 
-      msg: "重置失败", 
-      error: e.message 
-    });
+    return res.status(500).render("resetPwdFailed");
   }
 });
 
