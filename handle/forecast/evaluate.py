@@ -246,4 +246,4 @@ if __name__ == "__main__":
         evaluator.X_test, evaluator.Y_test, evaluator.test_times, "测试集")
     
     # 可视化示例
-    evaluator.plot_station_timeslice(test_pred, test_true, station_idx=2, start_idx=0, end_idx=200, name='测试集')
+    evaluator.plot_station_timeslice(test_pred, test_true, station_idx=5, start_idx=0, end_idx=200, name='测试集')

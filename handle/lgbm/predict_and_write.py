@@ -32,7 +32,8 @@ def predict_and_write():
         
         # 2. 应用特征工程
         df = add_features(df)
-        
+        # 只保留 6 月 12 日及以后的记录
+        df = df[df['timestamp'] >= pd.to_datetime('2025-06-12')]
         # 3. 确保与训练时相同的预处理
         df['station_id_encoded'] = encoder.transform(df['station_id'])
         df['hour'] = df['timestamp'].dt.hour
