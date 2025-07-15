@@ -533,6 +533,53 @@ endCoord
     ]//调度方案建议
 }
 ```
+（1）deepseek根据现有预测和调度方案和用户要求优化并返回增加的调度方案（post）
+```bash
+/suggestions/dispatch
+请求格式
+```bash
+{
+  "target_time": "2025-06-13T09:00:00Z",
+  "user_guidance": "优先保证Hoboken总站的车辆充足，可以从附近的站点调车过来。"
+}
+```
+返回格式
+```bash
+{
+    "schedule_time": "2025-06-13T09:35:00Z",
+    "optimized_plan": [
+        {
+            "from_station_id": "HB101",
+            "to_station_id": "HB201",
+            "bikes_to_move": 2,
+            "reason": "HB101 has excess bikes (11) and HB201 is at risk of depletion (2)."
+        },
+        {
+            "from_station_id": "HB101",
+            "to_station_id": "HB203",
+            "bikes_to_move": 2,
+            "reason": "HB101 has excess bikes (11) and HB203 is at risk of depletion (4)."
+        }
+        ...
+    ]//调度方案建议
+}
+```
+（2）与deepseek直接对话（post）
+```bash
+/suggestions
+请求格式
+```bash
+{
+  "message": "纽约有几种共享单车"
+}
+```
+返回格式
+```bash
+{
+    "original_prompt": "纽约有几种共享单车",
+    "suggestion": "截至2023年，纽约市主要有以下共享单车服务：\n\n1. **Citi Bike**（主导系统）\n- 运营方：Lyft（2018年收购Motivate后获得）\n- 规模：全美最大共享单车系统，纽约市覆盖曼哈顿/布鲁克林/皇后区/泽西市等\n- 车辆：约25,000辆（含传统自行车和电动辅助自行车）\n- 特点：标志性「花旗蓝」涂装，30%车辆为电动助力车（2023年数据）\n\n2. **Lyft Bike**（特殊区域）\n- 在罗斯福岛等特定区域运营\n- 实际与Citi Bike属同一系统，使用相同APP\n\n3. **JUMP by Uber**（已退出）\n- 曾于2018-2020年运营（红色电动车）\n- 因收购纠纷和疫情于2020年停止服务\n\n4. **新型微移动服务试验**\n- 2022年起试点共享电动滑板车（Citi Bike未参与）\n- 目前仅限布朗克斯区等外围区域\n\n重要提示：\n- Citi Bike占据95%以上市场份额\n- 纽约市通过特许经营制度严格控制运营商数量\n- 非合作企业的共享单车会被政府直接没收（如2023年中国公司「小靓单车」违规投放案例）\n\n建议用户优先使用Citi Bike，其APP实时显示：\n- 各站点车辆/空桩数量\n- 电动自行车可用情况\n- 骑行优惠信息（含NYCHA居民专项计划）"//给出的建议
+}
+```
 
 10.统计数据
 （1）指定时间段总流量（POST）
