@@ -33,14 +33,13 @@ print("正在连接数据库...")
 engine = create_engine('mysql+pymysql://zq:123456@localhost/traffic?charset=utf8mb4')
 print("数据库连接成功！")
 
-# 读取数据
+# 读取数据并过滤
 print("正在读取 station_hourly_flow 数据表...")
 sql = "SELECT station_id, timestamp, inflow, outflow FROM station_hourly_flow ORDER BY timestamp"
 df = pd.read_sql(sql, engine)
-print(f"共读取 {len(df)} 条记录")
-
-# 处理时间
 df['timestamp'] = pd.to_datetime(df['timestamp'])
+df = df[df['timestamp'] >= '2025-01-01 00:00:00']
+print(f"共读取 {len(df)} 条记录（过滤后）")
 print(f"时间范围：{df['timestamp'].min()} ~ {df['timestamp'].max()}")
 
 # 获取所有站点
@@ -54,15 +53,15 @@ print("开始构建 (时间 × 站点 × 特征) 张量...")
 df.set_index(['timestamp', 'station_id'], inplace=True)
 df = df.sort_index()
 
-full_time_index = pd.date_range(start=df.index.get_level_values(0).min(),
+full_time_index = pd.date_range(start='2025-01-01 00:00:00',
                                 end=df.index.get_level_values(0).max(),
                                 freq='h')
-print(f"时间步数共 {len(full_time_index)} 个（每小时一条）")
-
-# 初始化张量
-data_tensor = np.zeros((len(full_time_index), len(stations), len(features)))
+print(f"时间步数共 {len(full_time_index)} 个（从 2025-01-01 开始）")
 
 # 填充张量
+data_tensor = np.zeros((len(full_time_index), len(stations), len(features)))
+# 填充张量
+missing_stations = set()  # 记录首次缺失的站点
 for t_idx, ts in enumerate(full_time_index):
     if t_idx % 500 == 0:
         print(f"正在处理时间步 {t_idx+1}/{len(full_time_index)}: {ts}")
@@ -72,47 +71,73 @@ for t_idx, ts in enumerate(full_time_index):
             data_tensor[t_idx, station_idx[sid], 0] = row['inflow']
             data_tensor[t_idx, station_idx[sid], 1] = row['outflow']
         except KeyError:
-            continue
+            if sid not in missing_stations:  # 仅记录首次缺失
+                missing_stations.add(sid)
+            data_tensor[t_idx, station_idx[sid], 0] = 0  # 填充 0 表示无数据
+            data_tensor[t_idx, station_idx[sid], 1] = 0
+print(f"\n注意: 以下站点在某些时间步缺失数据: {sorted(missing_stations)}")
+
+# 调试: 检查站点 4 (假设为 'HB105') 的数据
+sid_hb105 = 'HB105'
+if sid_hb105 in station_idx:
+    idx_hb105 = station_idx[sid_hb105]
+    print(f"\n调试: 站点 'HB105' 映射到索引 {idx_hb105}")
+    print(f"调试: 站点 'HB105' 前5个时间步数据:", data_tensor[:5, idx_hb105, :])
+else:
+    print(f"警告: 站点 'HB105' 未在 station_idx 中找到")
+
+print("\n原始数据样本 (前5个时间步，前5个站点):")
+print(data_tensor[:5, :5, :])
 
 # ========== 修改点1：按站点归一化 ==========
 print("\n正在进行按站点归一化...")
-# 修改归一化函数
-# 替换原有归一化函数
 def normalize_by_station(data):
-    """改进的归一化方法，处理常数值站点"""
-    # 使用百分位数避免极端值
-    min_vals = np.percentile(data, 5, axis=0, keepdims=True)  # 5%分位数作为min
-    max_vals = np.percentile(data, 95, axis=0, keepdims=True) # 95%分位数作为max
+    """改进的归一化方法，处理常数值站点，确保输出在 [0, 1] 范围内"""
+    min_vals = np.percentile(data, 5, axis=0, keepdims=True)
+    max_vals = np.percentile(data, 95, axis=0, keepdims=True)
     
-    # 处理常数值站点
     constant_mask = (max_vals - min_vals) < 1e-8
     max_vals[constant_mask] = min_vals[constant_mask] + 1.0  # 给常数值站点设置1的范围
     
-    # 添加安全范围
-    range_vals = np.clip(max_vals - min_vals, 1e-4, None)
-    return (data - min_vals) / range_vals
+    range_vals = np.maximum(max_vals - min_vals, 1e-4)
+    normalized = np.clip((data - min_vals) / range_vals, 0, 1)
+    return normalized
 
-
-# 对流入和流出分别按站点归一化
-data_tensor[:, :, 0] = normalize_by_station(data_tensor[:, :, 0])  # 流入
-data_tensor[:, :, 1] = normalize_by_station(data_tensor[:, :, 1])  # 流出
-
-# 保存归一化参数（改为保存每个站点的参数）
+# 计算原始分位数并保存
+min_vals_inflow = np.percentile(data_tensor[:, :, 0], 5, axis=0, keepdims=True)
+max_vals_inflow = np.percentile(data_tensor[:, :, 0], 95, axis=0, keepdims=True)
+min_vals_outflow = np.percentile(data_tensor[:, :, 1], 5, axis=0, keepdims=True)
+max_vals_outflow = np.percentile(data_tensor[:, :, 1], 95, axis=0, keepdims=True)
+constant_mask_inflow = (max_vals_inflow - min_vals_inflow) < 1e-8
+constant_mask_outflow = (max_vals_outflow - min_vals_outflow) < 1e-8
+max_vals_inflow[constant_mask_inflow] = min_vals_inflow[constant_mask_inflow] + 1.0
+max_vals_outflow[constant_mask_outflow] = min_vals_outflow[constant_mask_outflow] + 1.0
 norm_params = {
-    'inflow_min': data_tensor[:, :, 0].min(axis=0).tolist(),
-    'inflow_max': data_tensor[:, :, 0].max(axis=0).tolist(),
-    'outflow_min': data_tensor[:, :, 1].min(axis=0).tolist(),
-    'outflow_max': data_tensor[:, :, 1].max(axis=0).tolist()
+    'inflow_min': min_vals_inflow.flatten().tolist(),
+    'inflow_max': max_vals_inflow.flatten().tolist(),
+    'outflow_min': min_vals_outflow.flatten().tolist(),
+    'outflow_max': max_vals_outflow.flatten().tolist()
 }
-print("\n关键站点归一化参数验证:")
+print("\n原始分位数归一化参数验证:")
 sample_indices = [0, 10, -1]  # 检查首、中、尾站点
 for i in sample_indices:
     print(f"站点{i}: 流入({norm_params['inflow_min'][i]:.2f}-{norm_params['inflow_max'][i]:.2f}) "
           f"流出({norm_params['outflow_min'][i]:.2f}-{norm_params['outflow_max'][i]:.2f})")
+
+# 执行归一化
+data_tensor[:, :, 0] = normalize_by_station(data_tensor[:, :, 0])
+data_tensor[:, :, 1] = normalize_by_station(data_tensor[:, :, 1])
 # ========================================
 
 print("数据张量构建完成！")
 print(f"最终张量的 shape 为：{data_tensor.shape}")
+
+print("\n第一个时间步数据 (2025-01-01 00:00:00):")
+print(data_tensor[0, :5, :])
+
+# 验证归一化范围
+norm_data = normalize_by_station(data_tensor[:, :, 0])
+print("\n归一化后范围检查:", norm_data.min(), norm_data.max())
 
 # 可视化检查
 print("\n检查归一化后的数据分布:")
@@ -122,6 +147,31 @@ plt.title("归一化后各站点流入量分布", fontproperties=font_prop)
 plt.xlabel("时间步", fontproperties=font_prop)
 plt.ylabel("站点索引", fontproperties=font_prop)
 plt.show()
+
+# 零值验证：可视化每小时零值比例
+print("\n可视化每小时零值比例...")
+hourly_zeros = (data_tensor[:, :, 0] == 0).mean(axis=1)
+plt.figure(figsize=(12, 6))
+plt.plot(full_time_index, hourly_zeros)
+plt.title("每小时零值比例", fontproperties=font_prop)
+plt.xlabel("时间", fontproperties=font_prop)
+plt.ylabel("零值比例", fontproperties=font_prop)
+plt.show()
+
+# 按实际记录计算零值比例
+zero_ratios = []
+for sid in stations:
+    idx = station_idx[sid]
+    mask = data_tensor[:, idx, 0] >= 0  # 所有时间步
+    non_zero_times = np.sum(data_tensor[mask, idx, 0] > 0)
+    total_times = np.sum(mask)  # 实际记录数
+    zero_ratio = 1 - (non_zero_times / total_times) if total_times > 0 else 1.0
+    zero_ratios.append(zero_ratio)
+zero_ratios = np.array(zero_ratios)
+print("\n各站点流入零值比例 (前10个站点):", zero_ratios[:10])
+if 'HB105' in station_idx:
+    idx_hb105 = station_idx['HB105']
+    print(f"调试: 站点 'HB105' 零值比例: {zero_ratios[idx_hb105]:.2%} (基于 {total_times} 条记录)")
 
 # 数据切分
 print("\n开始构造训练、验证、测试集...")
@@ -185,10 +235,7 @@ def haversine(lon1, lat1, lon2, lat2):
     """
     计算两个经纬度坐标之间的球面距离(km)
     """
-    # 将十进制度数转化为弧度
     lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
-    
-    # haversine公式
     dlon = lon2 - lon1 
     dlat = lat2 - lat1 
     a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
@@ -233,13 +280,8 @@ def build_adjacency_matrix(stations_df, flow_data):
             if i == j:
                 A[i, j] = 1  # 自连接
             else:
-                # 地理相似性 (高斯核)
                 geo_sim = np.exp(-dist_matrix[i, j]**2 / (2 * sigma**2))
-                
-                # 流量模式相似性
                 flow_sim = (flow_corr[i, j] + 1) / 2  # 转换到[0,1]
-                
-                # 组合权重 (几何平均)
                 A[i, j] = np.sqrt(geo_sim * flow_sim)
     
     # 可视化检查
@@ -271,9 +313,3 @@ print(f"各站点流出量均值差异: {data_tensor[:,:,1].mean(axis=0).std():.
 print("\n原始数据统计:")
 print(f"流入 - 均值: {data_tensor[:,:,0].mean():.4f}, 非零比例: {(data_tensor[:,:,0] > 0).mean():.2%}")
 print(f"流出 - 均值: {data_tensor[:,:,1].mean():.4f}, 非零比例: {(data_tensor[:,:,1] > 0).mean():.2%}")
-
-# 检查归一化后的数据
-norm_data = normalize_by_station(data_tensor[:,:,0])
-print("\n归一化后统计:")
-print(f"最小值: {norm_data.min()}, 最大值: {norm_data.max()}")
-print(f"零值比例: {(norm_data == 0).mean():.2%}")

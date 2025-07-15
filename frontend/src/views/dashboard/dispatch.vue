@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed, nextTick } from 'vue'
+import { ref, onMounted, computed, nextTick ,onBeforeUnmount} from 'vue'
 import { useRouter } from 'vue-router'
 import Map from 'ol/Map'
 import View from 'ol/View'
@@ -48,9 +48,6 @@ let mapInstance = null // OpenLayers 地图实例
 let vectorLayer = null // 用于绘制调度方案要素的矢量图层
 let popupOverlay; // 保存 overlay
 
-// OpenRouteService API 配置
-const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImE0ZjM4NDNiZmE3NDQ0YTM4MmNhNmEyMWM4NWUxYjU0IiwiaCI6Im11cm11cjY0In0='
-const ORS_BASE_URL = 'https://api.openrouteservice.org/v2'
 
 const welcoming = ref('管理员，欢迎您！') // 欢迎信息
 const fixedDate = computed(() => {
@@ -73,6 +70,39 @@ const selectedDispatch = ref(null)
 const loading = ref(false)
 let navigationLayer = null
 
+const topPanelHeight = ref(300) // 初始高度
+const minHeight = 100
+const maxHeight = 600
+let isResizing = false
+
+function startResize(event) {
+  isResizing = true
+  document.addEventListener('mousemove', handleResize)
+  document.addEventListener('mouseup', stopResize)
+}
+
+function handleResize(event) {
+  if (!isResizing) return
+  // 获取当前鼠标位置距离页面顶部的高度
+  const newHeight = event.clientY - document.querySelector('.app-header').offsetHeight
+  // 限制最大最小高度
+  if (newHeight > minHeight && newHeight < maxHeight) {
+    topPanelHeight.value = newHeight
+  }
+}
+
+function stopResize() {
+  isResizing = false
+  document.removeEventListener('mousemove', handleResize)
+  document.removeEventListener('mouseup', stopResize)
+}
+
+// 清理事件监听
+onBeforeUnmount(() => {
+  document.removeEventListener('mousemove', handleResize)
+  document.removeEventListener('mouseup', stopResize)
+})
+
 // 3. 修改 onMounted 中的地图初始化，添加导航图层
 // 在 vectorLayer 初始化后添加：
 navigationLayer = new VectorLayer({
@@ -83,28 +113,25 @@ navigationLayer = new VectorLayer({
 /**
  * 调用 OpenRouteService 获取路线
  */
-async function getRoute(startCoord, endCoord) {
+async function getRoute(startCoord, endCoord) { 
   try {
-    const response = await fetch(`${ORS_BASE_URL}/directions/driving-car/geojson`, {
+    const response = await fetch('/guide/route', {
       method: 'POST',
       headers: {
-        'Accept': 'application/json, application/geo+json',
-        'Authorization': ORS_API_KEY,
-        'Content-Type': 'application/json; charset=utf-8'
+        'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        coordinates: [startCoord, endCoord],
-        format: 'geojson',
-        instructions: true,
-        language: 'zh-cn'
-      })
+      body: JSON.stringify({ startCoord, endCoord })
     })
 
-    const raw = await response.text()
-    console.log('ORS 原始响应:', raw)
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error || '路线请求失败')
+    }
 
-    const data = JSON.parse(raw)
+    const data = await response.json()
+    console.log('后端代理返回路线数据:', data)
     return data
+
   } catch (error) {
     console.error('获取路线失败:', error)
     throw error
@@ -711,87 +738,96 @@ function focusStationOnMap(station) {
 
     <div class="main-content">
       <div class="top-panel" :style="{ height: topPanelHeight + 'px' }">
-        <div class="left-buttons-panel">
-          <div class="status-buttons">
-            <button
-              v-for="status in ['全部', '待执行', '正在执行', '已完成']"
-              :key="status"
-              @click="currentStatusFilter = status"
-              :class="['status-btn', currentStatusFilter === status ? 'active' : '']"
-            >
-              {{ status }}
-            </button>
-          </div>
-
-          <div class="button-row">
-            <div class="batch-buttons">
-              <button @click="batchStart">批量采用</button>
-              <button @click="batchCancel">批量撤销</button>
-            </div>
-            <div class="highlight-btn">
-              <button @click="highlightStations">
-                {{ showHighlight ? '隐藏调出站点' : '查看调出站点' }}
-              </button>
-            </div>
-          </div>
+  <div class="top-panel-content">
+    <!-- 左侧：两列按钮区 -->
+    <div class="buttons-area">
+      <div class="buttons-columns">
+        <div class="left-column">
+          <button @click="batchStart">批量采用</button>
+          <button @click="batchCancel">批量撤销</button>
+          <button @click="highlightStations">
+            {{ showHighlight ? '隐藏调出站点' : '查看调出站点' }}
+          </button>
         </div>
-
-        <div class="dispatch-list-panel">
-          <table class="plan-table">
-            <thead>
-              <tr>
-                <th class="col-checkbox">多选</th>
-                <th class="col-stations">起止站点</th>
-                <th class="col-status">状态</th>
-                <th class="col-number">数量</th>
-                <th class="col-action">操作</th>
-                <th class="col-nav">导航</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="item in filteredDispatchList"
-                :key="item.schedule_id"
-                :class="{ selected: selectedPlan && selectedPlan.schedule_id === item.schedule_id }"
-                @click="selectPlan(item)"
-              >
-                <td class="col-checkbox">
-                  <input type="checkbox" v-model="selectedIds" :value="item.schedule_id" @click.stop />
-                </td>
-                <td class="col-stations">
-                  <div class="station-line">
-                    <div class="station-badge start-station">{{ item.start_station.name }}</div>
-                    <div class="arrow">→</div>
-                    <div class="station-badge end-station">{{ item.end_station.name }}</div>
-                  </div>
-                </td>
-                <td class="col-status">
-                  <span
-                    :class="[
-                      'status-tag',
-                      item.statusInt === '待执行' ? 'status-pending' : '',
-                      item.statusInt === '正在执行' ? 'status-running' : '',
-                      item.statusInt === '已完成' ? 'status-finished' : ''
-                    ]"
-                  >
-                    {{ item.statusInt }}
-                  </span>
-                </td>
-                <td class="col-number">{{ item.bikes_to_move ?? '-' }}</td>
-                <td class="col-action">
-                  <button v-if="item.statusInt === '待执行'" @click.stop="handleStart(item)">采用</button>
-                  <button v-if="item.statusInt === '正在执行'" @click.stop="handleCancel(item)">撤销</button>
-                </td>
-                <td class="col-nav">
-                  <button @click.stop="showNavigation(item)" :disabled="loading">
-                    {{ loading ? '加载中...' : '导航' }}
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+        <div class="right-column">
+          <button
+            v-for="status in ['全部', '待执行', '正在执行', '已完成']"
+            :key="status"
+            @click="currentStatusFilter = status"
+            :class="[
+              'status-btn',
+              status === '待执行' ? 'status-pending' :
+              status === '正在执行' ? 'status-running' :
+              status === '已完成' ? 'status-finished' : '',
+              currentStatusFilter === status ? 'active' : ''
+            ]"
+          >
+            {{ status }}
+          </button>
         </div>
       </div>
+    </div>
+
+    <!-- 右侧：可滚动列表 -->
+    <div class="dispatch-list-scrollable">
+      <table class="plan-table">
+        <thead>
+          <tr>
+            <th class="col-checkbox">多选</th>
+            <th class="col-stations">起止站点</th>
+            <th class="col-status">状态</th>
+            <th class="col-number">数量</th>
+            <th class="col-action">操作</th>
+            <th class="col-nav">导航</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="item in filteredDispatchList"
+            :key="item.schedule_id"
+            :class="{ selected: selectedPlan && selectedPlan.schedule_id === item.schedule_id }"
+            @click="selectPlan(item)"
+          >
+            <td class="col-checkbox">
+              <input type="checkbox" v-model="selectedIds" :value="item.schedule_id" @click.stop />
+            </td>
+            <td class="col-stations">
+              <div class="station-line">
+                <div class="station-badge start-station">{{ item.start_station.name }}</div>
+                <div class="arrow">→</div>
+                <div class="station-badge end-station">{{ item.end_station.name }}</div>
+              </div>
+            </td>
+            <td class="col-status">
+              <span
+                :class="[
+                  'status-tag',
+                  item.statusInt === '待执行' ? 'status-pending' : '',
+                  item.statusInt === '正在执行' ? 'status-running' : '',
+                  item.statusInt === '已完成' ? 'status-finished' : ''
+                ]"
+              >
+                {{ item.statusInt }}
+              </span>
+            </td>
+            <td class="col-number">{{ item.bikes_to_move ?? '-' }}</td>
+            <td class="col-action">
+              <button v-if="item.statusInt === '待执行'" @click.stop="handleStart(item)">采用</button>
+              <button v-if="item.statusInt === '正在执行'" @click.stop="handleCancel(item)">撤销</button>
+            </td>
+            <td class="col-nav">
+              <button @click.stop="showNavigation(item)" :disabled="loading">
+                {{ loading ? '加载中...' : '导航' }}
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+
 
       <div class="resizer" @mousedown="startResize"></div>
 
@@ -874,12 +910,6 @@ function focusStationOnMap(station) {
 .batch-buttons, .highlight-btn { margin-top:8px; }
 .batch-buttons button, .highlight-btn button { margin-right:4px; }
 
-.app-container {
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-}
-
 .app-header {
   display: flex;
   justify-content: space-between;
@@ -888,21 +918,6 @@ function focusStationOnMap(station) {
   background-color: #f5f5f5;
   border-bottom: 1px solid #ddd;
   flex-shrink: 0;
-}
-.main-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column; /* 上下布局 */
-  overflow: hidden;
-}
-
-/* 顶部面板：左右布局 */
-.top-panel {
-  display: flex;
-  flex-direction: row;
-  height: 50%; /* 占上半部分高度，可根据需要调整 */
-  border-bottom: 1px solid #ccc;
-  overflow: hidden;
 }
 
 /* 左侧按钮区 */
@@ -916,25 +931,21 @@ function focusStationOnMap(station) {
 }
 
 /* 原本的 dispatch-list-panel 改成右侧列表 */
-.dispatch-list-panel {
+/* .dispatch-list-panel {
   flex: 1;
-  overflow-y: auto;
+  overflow: auto;
   background-color: #fafafa;
   padding: 10px;
   box-sizing: border-box;
-}
+} */
 
 /* 下方地图 */
-.map-panel {
-  flex: 1;
-  position: relative;
-}
-.map {
+/* .map {
   position: absolute;
   top: 0; bottom: 0; left: 0; right: 0;
   width: 100%;
   height: 100%;
-}
+} */
 
 .plan-table {
   width: 100%;
@@ -978,7 +989,7 @@ function focusStationOnMap(station) {
   margin-bottom: 10px;
 }
 
-.status-btn {
+/* .status-btn {
   padding: 6px 14px;
   border: 1px solid #007bff;
   background-color: #f8f9fa;
@@ -988,12 +999,23 @@ function focusStationOnMap(station) {
   font-weight: 500;
   transition: background-color 0.3s ease;
   white-space: nowrap;
+} */
+.status-btn {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  margin: 2px;
+  background: #f0f0f0;  /* 默认背景 */
+  color: #333;
+  transition: background-color 0.2s, transform 0.1s;
 }
 
 .status-btn.active,
 .status-btn:hover {
-  background-color: #007bff;
-  color: white;
+  /* background-color: #007bff;
+  color: white; */
+  transform: translateY(-1px);
 }
 .highlight-btn {
   margin-top: 10px;
@@ -1014,16 +1036,19 @@ function focusStationOnMap(station) {
 /* 待执行：黄色背景 */
 .status-pending {
   background-color: #f0ad4e;
+  color: #fff;
 }
 
 /* 正在执行：红色背景 */
 .status-running {
   background-color: #d9534f;
+  color: #fff;
 }
 
 /* 已完成：绿色背景 */
 .status-finished {
   background-color: #5cb85c;
+  color: #fff;
 }
 
 .plan-table button,
@@ -1295,6 +1320,118 @@ function focusStationOnMap(station) {
 .col-stations {
   min-width: 120px;
 }
+.app-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
 
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
 
+.top-panel {
+  overflow: hidden;
+  background: #fafafa;
+  border-bottom: 1px solid #ddd;
+}
+.buttons-columns {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+}
+
+.resizer {
+  height: 5px;
+  cursor: row-resize;
+  background: #ccc;
+}
+
+.map-panel {
+  flex: 1;
+  position: relative;
+}
+
+.map {
+  width: 100%;
+  height: 100%;
+}
+
+.navigation-info-panel {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 300px;
+  background: white;
+  border-left: 1px solid #ddd;
+  overflow-y: auto;
+  box-shadow: -2px 0 5px rgba(0,0,0,0.1);
+}
+.top-panel-content {
+  display: flex;
+  height: 100%;
+}
+
+.buttons-area {
+  flex-shrink: 0;                /* 防止被挤小 */
+  padding: 8px;
+  background: #f9f9f9;
+  border-right: 1px solid #ddd;
+  display: flex;
+  align-items: flex-start;
+}
+
+.left-column, .right-column {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.status-btn {
+  padding: 6px 12px;
+}
+
+.status-btn.active {
+  background: #007bff;
+  color: white;
+  border-radius: 4px;
+}
+.left-column button {
+  padding: 6px 12px;
+  font-size: 14px;
+  border: none;
+  border-radius: 6px;
+  background: #4caf50; /* 默认绿色 */
+  color: white;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  transition: background 0.2s, transform 0.1s;
+}
+
+.left-column button:nth-child(2) {
+  background: #f44336; /* 第二个按钮：红色 */
+}
+
+.left-column button:nth-child(3) {
+  background: #2196f3; /* 第三个按钮：蓝色 */
+}
+
+.left-column button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+.left-column button:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+.dispatch-list-scrollable {
+  flex: 1;                    /* 占满剩余空间 */
+  overflow-y: auto;           /* 垂直滚动 */
+  padding: 8px;
+}
 </style>
