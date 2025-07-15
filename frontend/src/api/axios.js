@@ -64,4 +64,34 @@ export async function getStationAssign(params = {}) {
   }
 }
 
+// src/api.js
+export async function postSuggestion(message) {
+  try {
+    const res = await fetch('/suggestions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message })
+    })
+
+    // 确认响应成功
+    if (!res.ok) {
+      console.error('请求失败：HTTP 状态码', res.status)
+      return null
+    }
+
+    const data = await res.json()
+    console.log('后端返回数据：', data)
+
+    if (!data || typeof data !== 'object' || !data.suggestion) {
+      console.error('接口返回格式不符合预期：', data)
+      return null
+    }
+
+    return data.suggestion
+  } catch (error) {
+    console.error('请求出错', error)
+    return null
+  }
+}
+
 export default request
