@@ -48,9 +48,6 @@ let mapInstance = null // OpenLayers 地图实例
 let vectorLayer = null // 用于绘制调度方案要素的矢量图层
 let popupOverlay; // 保存 overlay
 
-// OpenRouteService API 配置
-const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImE0ZjM4NDNiZmE3NDQ0YTM4MmNhNmEyMWM4NWUxYjU0IiwiaCI6Im11cm11cjY0In0='
-const ORS_BASE_URL = 'https://api.openrouteservice.org/v2'
 
 const welcoming = ref('管理员，欢迎您！') // 欢迎信息
 const fixedDate = computed(() => {
@@ -83,28 +80,25 @@ navigationLayer = new VectorLayer({
 /**
  * 调用 OpenRouteService 获取路线
  */
-async function getRoute(startCoord, endCoord) {
+async function getRoute(startCoord, endCoord) { 
   try {
-    const response = await fetch(`${ORS_BASE_URL}/directions/driving-car/geojson`, {
+    const response = await fetch('/guide/route', {
       method: 'POST',
       headers: {
-        'Accept': 'application/json, application/geo+json',
-        'Authorization': ORS_API_KEY,
-        'Content-Type': 'application/json; charset=utf-8'
+        'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        coordinates: [startCoord, endCoord],
-        format: 'geojson',
-        instructions: true,
-        language: 'zh-cn'
-      })
+      body: JSON.stringify({ startCoord, endCoord })
     })
 
-    const raw = await response.text()
-    console.log('ORS 原始响应:', raw)
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error || '路线请求失败')
+    }
 
-    const data = JSON.parse(raw)
+    const data = await response.json()
+    console.log('后端代理返回路线数据:', data)
     return data
+
   } catch (error) {
     console.error('获取路线失败:', error)
     throw error
