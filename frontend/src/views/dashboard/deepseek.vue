@@ -11,14 +11,28 @@ const welcoming = ref('管理员，欢迎您！')
 const fixedDate = computed(() => new Date().toLocaleDateString())
 const currentHour = computed(() => new Date().getHours() + ':00')
 
-// 对话内容
-const newMessage = ref('')
-const messages = ref([
-  { sender: 'ai', text: '你好！我是DeepSeek智能助手。请问有什么可以帮您？' }
-  ])
+// 当前模式：'chat' 或 'plan'
+const currentMode = ref('chat')
 
-// 聊天消息容器
-const chatMessages = ref(null)
+// 聊天消息容器 DOM 元素
+const chatMessagesEl = ref(null)
+
+// 两组对话
+const chatMessages = ref([
+  // { sender: 'user'|'ai', text: '...' }
+])
+const planMessages = ref([])
+
+// 新消息输入框
+const newMessage = ref('')
+
+// 计算属性，根据当前模式返回对应的消息列表
+const messages = computed(() => {
+  return currentMode.value === 'chat' ? chatMessages.value : planMessages.value
+})
+
+// // 聊天消息容器
+// const chatMessages = ref(null)
 
 const handleKeyDown = (e) => {
   if (e.shiftKey) {
@@ -33,36 +47,81 @@ const handleKeyDown = (e) => {
 
 // 格式化文本，将换行符替换为 <br>
 const formatText = (text) => {
-  return text.replace(/\n/g, '<br>')
+  return (text ?? '').replace(/\n/g, '<br>')
 }
 
 // 滚动到底部
 const scrollToBottom = () => {
   nextTick(() => {
-    if (chatMessages.value) {
-      chatMessages.value.scrollTop = chatMessages.value.scrollHeight
+    if (chatMessagesEl.value) {
+      chatMessagesEl.value.scrollTop = chatMessagesEl.value.scrollHeight
     }
   })
 }
+
+// const sendMessage = async () => {
+//   const text = newMessage.value.trim()
+//   if (!text) return
+
+//   messages.value.push({ sender: 'user', text })
+//   newMessage.value = ''
+//   scrollToBottom()
+
+//   const suggestion = await postSuggestion(text)
+//   if (suggestion) {
+//     messages.value.push({ sender: 'ai', text: suggestion })
+//   } else {
+//     messages.value.push({ sender: 'ai', text: '抱歉，获取回复失败，请稍后再试。' })
+//   }
+
+//   scrollToBottom()
+// }
 
 const sendMessage = async () => {
   const text = newMessage.value.trim()
   if (!text) return
 
-  messages.value.push({ sender: 'user', text })
-  newMessage.value = ''
-  scrollToBottom()
+  // const targetMessages = currentMode.value === 'chat' ? chatMessages : planMessages
+  // targetMessages.value.push({ sender: 'user', text })
+  // newMessage.value = ''
+  // if (!newMessage.value.trim()) return
 
-  const suggestion = await postSuggestion(text)
-  if (suggestion) {
-    messages.value.push({ sender: 'ai', text: suggestion })
-  } else {
-    messages.value.push({ sender: 'ai', text: '抱歉，获取回复失败，请稍后再试。' })
+  const msg = {
+    sender: 'user',
+    text
   }
 
-  scrollToBottom()
-}
+  // 不要对 computed 的 targetMessages.value push
+  if (currentMode.value === 'chat') {
+    chatMessages.value.push(msg)
+  } else {
+    planMessages.value.push(msg)
+  }
 
+  newMessage.value = ''
+  try {
+    let reply
+    if (currentMode.value === 'chat') {
+      reply = await postSuggestion(text)  // 普通对话
+    } else {
+      reply = await postDispatchPlan(text)  // 生成方案
+    }
+    if (currentMode.value === 'chat') {
+      chatMessages.value.push({ sender: 'ai', text: reply })
+    } else {
+      planMessages.value.push({ sender: 'ai', text: reply })
+    }
+    nextTick(() => scrollToBottom())
+  } catch (error) {
+    targetMessages.value.push({ sender: 'ai', text: '出错了，请稍后再试' })
+    if (currentMode.value === 'chat') {
+      chatMessages.value.push({ sender: 'ai', text: errMsg })
+    } else {
+      planMessages.value.push({ sender: 'ai', text: errMsg })
+    }
+  }
+  nextTick(() => scrollToBottom())
+}
 
 // 退出
 const logout = async () => {
@@ -102,12 +161,31 @@ const logout = async () => {
     <div class="chat-container">
       <div class="chat-header">
         <div class="chat-title">DeepSeek 对话助手</div>
+        <div class="mode-switch">
+          <button
+            :class="{ active: currentMode === 'chat' }"
+            @click="currentMode = 'chat'"
+          >
+            对话聊天
+          </button>
+          <button
+            :class="{ active: currentMode === 'plan' }"
+            @click="currentMode = 'plan'"
+          >
+            生成方案
+          </button>
+        </div>
         <div class="chat-status">
           <i class="fas fa-circle"></i> 已连接
         </div>
       </div>
-      <div class="chat-messages" ref="chatMessages">
-        <div v-for="(msg, index) in messages" :key="index" :class="['message', msg.sender + '-message']">
+
+      <div class="chat-messages" ref="El">
+        <div
+          v-for="(msg, index) in messages"
+          :key="index"
+          :class="['message', msg.sender + '-message']"
+        >
           <div class="message-header">
             <div class="message-icon">
               <i :class="msg.sender === 'user' ? 'fas fa-user' : 'fas fa-robot'"></i>
@@ -117,6 +195,7 @@ const logout = async () => {
           <div class="message-bubble" v-html="formatText(msg.text)"></div>
         </div>
       </div>
+
       <div class="chat-input-container">
         <div class="chat-input-box">
           <textarea
@@ -133,6 +212,7 @@ const logout = async () => {
     </div>
   </div>
 </template>
+
 
 <style scoped>
 .app-container {
@@ -190,6 +270,28 @@ const logout = async () => {
 .fixed-date, .fixed-time {
   font-weight: 500;
   margin-left: 4px;
+}
+
+.mode-switch {
+  display: flex;
+  border: 1px solid #007bff;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.mode-switch button {
+  padding: 4px 12px;
+  font-size: 12px;
+  background: transparent;
+  color: #007bff;
+  border: none;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.mode-switch button.active {
+  background: #007bff;
+  color: #fff;
 }
 
 .chat-container {
