@@ -306,23 +306,26 @@ const logout = async () => {
   }
 }
 
-// 样式
+// 站点样式
 function getStationStyle(station) {
+  let iconSrc = '/icons/BlueLocationRound.svg'
+
   return new Style({
-    image: new Circle({
-      radius: 8,
-      fill: new Fill({ color: 'rgba(66, 133, 244, 0.8)' }),
-      stroke: new Stroke({ color: '#fff', width: 2 })
+    image: new Icon({
+      src: iconSrc,
+      scale: 1.5,
+      anchor: [0.5, 1]
     }),
     text: new Text({
       text: station.name,
       font: 'bold 12px sans-serif',
       fill: new Fill({ color: 'white' }),
       stroke: new Stroke({ color: '#000', width: 2 }),
-      offsetY: -15
+      offsetY: -40
     })
   })
 }
+
 function getRouteStyle(count) {
   return new Style({
     stroke: new Stroke({
@@ -398,72 +401,164 @@ function highlightStationsOnMap(stations) {
   });
 }
 
-
 /**
  * 在地图上绘制选定的调度方案
  */
+// 全局或模块作用域变量
+let animating = false;
+let animationStart = null;
+let arrowFeatures = [];
+let currentLine = null;
+const arrowCount = 5;    // 箭头数量
+const animationDuration = 4000; // 毫秒
+
 function drawDispatchPlanOnMap(plan) {
-  console.log('绘制 item:', plan)
+  console.log('绘制 item:', plan);
 
-  if (!vectorLayer) {
-    console.warn('矢量图层未初始化。')
-    return
+  if (!vectorLayer || !mapInstance) {
+    console.warn('矢量图层未初始化。');
+    return;
   }
-  vectorLayer.getSource().clear() // 清除现有要素
 
-  if (!plan) return
+  // 清除旧图层内容与动画
+  vectorLayer.getSource().clear();
+  mapInstance.un('postrender', animateArrow);
+  animating = false;
+  animationStart = null;
+  arrowFeatures = [];
+  currentLine = null;
 
-  const features = []
+  if (!plan) return;
 
-  filteredDispatchList.value.forEach(item => {
-    // 绘制起点
-    const startFeature = new Feature({
-      geometry: new Point(fromLonLat([item.start_station.lng, item.start_station.lat]))
+  const features = [];
+
+  const item = plan;
+
+  const startPt = fromLonLat([item.start_station.lng, item.start_station.lat]);
+  const endPt = fromLonLat([item.end_station.lng, item.end_station.lat]);
+
+
+
+  // 路线
+  const line = new LineString([startPt, endPt]);
+  const lineFeature = new Feature({ geometry: line });
+  lineFeature.setStyle(new Style({
+    stroke: new Stroke({
+      color: 'blue',
+      width: 4
     })
-    startFeature.setStyle(getStationStyle(item.start_station))
-    features.push(startFeature)
+  }));
+  features.push(lineFeature);
 
-    // 绘制终点
-    const endFeature = new Feature({
-      geometry: new Point(fromLonLat([item.end_station.lng, item.end_station.lat]))
-    })
-    endFeature.setStyle(getStationStyle(item.end_station))
-    features.push(endFeature)
+  // 箭头 Features
+  for (let i = 0; i < arrowCount; i++) {
+    const arrow = new Feature({ geometry: new Point(startPt) });
+    arrow.offsetIndex = i;
+    arrowFeatures.push(arrow);
+    features.push(arrow);
+  }
 
-    // 绘制路线
-    const lineFeature = new Feature({
-      geometry: new LineString([
-        fromLonLat([item.start_station.lng, item.start_station.lat]),
-        fromLonLat([item.end_station.lng, item.end_station.lat])
-      ])
-    })
-    // 如果是选中的方案，线条样式更粗/颜色不同
-    if (selectedPlan.value && selectedPlan.value.schedule_id === item.schedule_id) {
-      lineFeature.setStyle(new Style({
-        stroke: new Stroke({
-          color: 'red',
-          width: 6
-        })
-      }))
-    } else {
-      lineFeature.setStyle(getRouteStyle(item.bikes_to_move))
-    }
-    features.push(lineFeature)
-  })
+  // 起点
+  const startFeature = new Feature({ geometry: new Point(startPt) });
+  startFeature.setStyle(getStationStyle(item.start_station));
+  features.push(startFeature);
 
-    vectorLayer.getSource().addFeatures(features)
-    if (features.length) {
-      const extent = vectorLayer.getSource().getExtent()
-      mapInstance.getView().fit(extent, { padding: [50,50,50,50], duration: 1000, maxZoom: 16 })
-    }
-    // 返回当前选中方案的线条 Feature，供外面去做 fit
-    const selectedLine = features.find(f =>
-        f.getGeometry() instanceof LineString &&
-        selectedPlan.value && selectedPlan.value.schedule_id === plan.schedule_id
-      );
+  // 终点
+  const endFeature = new Feature({ geometry: new Point(endPt) });
+  endFeature.setStyle(getStationStyle(item.end_station));
+  features.push(endFeature);
 
-    return selectedLine || null;
+  vectorLayer.getSource().addFeatures(features);
+
+  // 自动缩放地图
+  const extent = vectorLayer.getSource().getExtent();
+  if (extent) {
+    mapInstance.getView().fit(extent, { padding: [50, 50, 50, 50], duration: 1000, maxZoom: 16 });
+  }
+
+  // 启动动画
+  currentLine = line;
+  animating = true;
+  animationStart = null;
+  mapInstance.on('postrender', animateArrow);
+  mapInstance.render();
+
+  // 返回当前选中线路 Feature（可选）
+  return lineFeature;
 }
+
+
+// 用于计算箭头样式（icon + 方向）
+function getArrowStyle(rotation) {
+  return new Style({
+    image: new Icon({
+      src: '/icons/arrow.png', // 替换成你项目里的箭头图路径
+      scale: 0.07,
+      rotation: rotation,
+      rotateWithView: true
+    })
+  });
+}
+
+
+function animateArrow(event) {
+  if (!animating || !currentLine || arrowFeatures.length === 0) return;
+
+  const vectorContext = event.vectorContext;
+  const frameState = event.frameState;
+
+  if (!animationStart) animationStart = frameState.time;
+  const elapsed = frameState.time - animationStart;
+  const fraction = (elapsed % animationDuration) / animationDuration;
+  const spacing = 1 / arrowCount;
+
+  const coords = currentLine.getCoordinates();
+  const segmentCount = coords.length - 1;
+  if (segmentCount <= 0) return;
+
+  arrowFeatures.forEach((arrow, idx) => {
+    if (!arrow || typeof arrow.getGeometry !== 'function' || typeof arrow.setStyle !== 'function') {
+      console.error(`❌ 无效的 arrowFeature[${idx}]`, arrow);
+      return;
+    }
+
+    const offset = (fraction + arrow.offsetIndex * spacing) % 1;
+    const segmentIndex = Math.floor(offset * segmentCount) % segmentCount;
+
+    const [x1, y1] = coords[segmentIndex];
+    const [x2, y2] = coords[segmentIndex + 1];
+
+    // 插值计算箭头当前坐标
+    const localFraction = (offset * segmentCount) % 1;
+    const coord = [
+      x1 + (x2 - x1) * localFraction,
+      y1 + (y2 - y1) * localFraction
+    ];
+
+    // 使用屏幕像素坐标计算方向
+    const pixel1 = mapInstance.getPixelFromCoordinate([x1, y1]);
+    const pixel2 = mapInstance.getPixelFromCoordinate([x2, y2]);
+    const rotation = Math.atan2(pixel2[1] - pixel1[1], pixel2[0] - pixel1[0]);
+
+    try {
+      arrow.getGeometry().setCoordinates(coord);
+      const style = getArrowStyle(rotation);
+      if (!style) {
+        console.error(`❌ getArrowStyle(${rotation}) 返回空`);
+        return;
+      }
+      arrow.setStyle(style);
+      // vectorContext.setStyle(style);
+      // vectorContext.drawGeometry(arrow.getGeometry());
+    } catch (e) {
+      console.error(`❌ 渲染 arrow[${idx}] 出错:`, e);
+    }
+  });
+
+  mapInstance.render(); // 保持动画
+}
+
+
 
 /**
  * 选择调度方案并更新地图显示
@@ -823,6 +918,17 @@ function focusStationOnMap(station) {
 
       <div class="map-panel">
         <div ref="mapContainer" class="map"></div>
+            <!-- 悬停提示框 -->
+        <div 
+          v-if="showTooltip" 
+          class="tooltip"
+          :style="{ 
+            left: tooltipPosition.x + 'px', 
+            top: tooltipPosition.y + 'px' 
+          }"
+        >
+          {{ tooltipContent }}
+        </div>
         <div class="highlight-info-panel" v-if="showHighlight && highlightStationList.length">
       <h4>调出站点</h4>
       <ul>

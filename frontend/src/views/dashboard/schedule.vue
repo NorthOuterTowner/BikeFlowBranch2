@@ -56,6 +56,8 @@ const tooltip = ref(null)
 const showTooltip = ref(false)
 const tooltipContent = ref('')
 const tooltipPosition = ref({ x: 0, y: 0 })
+
+// 固定日期和当前小时
 const fixedDate = computed(() => {
   return localStorage.getItem('selectedDate') || new Date().toISOString().split('T')[0]
 })
