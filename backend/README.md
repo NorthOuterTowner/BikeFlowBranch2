@@ -454,3 +454,18 @@ endCoord
    res.json(orsResponse.data);//返回的是这个东西（要以json格式），可以解析一下
 }
 ```
+8.修改调度方案
+（1）修改调度方案（POST）
+```bash
+/dispatch/edit
+```
+请求格式
+```bash
+{
+    "id":[调度方案编号],
+    "date":[调度日期],
+    "hour":[调度小时],
+    "start_id":[起始站点编号],
+    "end_id":[目标站点编号],
+    "bikes":[调度数量]
+}
