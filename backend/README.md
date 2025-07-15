@@ -591,7 +591,7 @@ endCoord
 {
   "startDate": "2025-01-01", //开始日期
   "startHour": "10", //开始小时
-  "endDate": "2025-02-01", //结束日期
+  "endDate": "2025-02-01" , //结束日期
   "endHour": "12" //结束小时
 }
 ```
@@ -666,5 +666,22 @@ endCoord
             "total_flow": "2099"
         }
     ]
+}
+```
+（3）获取top10站点及其流量（GET）
+```bash
+/statistics/top10
+```
+请求格式
+```bash
+
+```
+返回格式
+```bash
+{
+  "query_time": "2025-01-21T08:00:00Z",
+  "total_inflow": 150,//进入车流量
+  "total_outflow": 145,//出车流量
+  "total_flow": 295//总流量
 }
 ```
