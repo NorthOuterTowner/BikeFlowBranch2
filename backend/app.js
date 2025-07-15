@@ -58,6 +58,7 @@ app.use("/schedule", require("./router/schedule"));
 app.use("/search",require("./router/search"));
 app.use("/suggestions",require("./router/suggestionRouter"));
 app.use("/guide",require("./router/guideRouter"));
+app.use("/statistics",require("./router/statistics"));
 
 app.listen(PORT,'0.0.0.0', () => {
   console.log(`Server is running on port ${PORT}`);
