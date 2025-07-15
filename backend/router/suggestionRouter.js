@@ -145,7 +145,6 @@ ${formattedExistingSchedule}
 
 
 router.post('/dispatch', authMiddleware, async (req, res) => {
-    // --- 已修改：从 req.body 获取参数 ---
     const { target_time, user_guidance } = req.body;
     if (!target_time) {
         return res.status(400).json({ error: '请求失败，缺少 "target_time" 参数。' });
@@ -201,5 +200,75 @@ router.post('/dispatch', authMiddleware, async (req, res) => {
     }
 });
 
+/**
+ * @api {post} /api/v1/suggestions 与AI对话获取建议
+ * @apiDescription 提供一个通用的对话接口，前端可以发送任何与系统相关的问题，
+ *                 由AI提供分析和建议。
+ * @access Private
+ */
+router.post('/', authMiddleware, async (req, res) => {
+    // 1. 从请求体中获取用户的提问
+    const { message } = req.body;
+
+    // 2. 参数校验
+    if (!message || typeof message !== 'string' || message.trim() === '') {
+        return res.status(400).json({ error: '请求失败，"message" 参数不能为空。' });
+    }
+
+    try {
+        // 3. 为AI设定角色，以获取更相关的回答 (System Prompt)
+        const messages = [
+            {
+                role: 'system',
+                content: '你是一个专业的共享单车运营分析师和调度系统助手。请根据用户的问题，提供专业、具体、可行的分析和建议。'
+            },
+            {
+                role: 'user',
+                content: message
+            }
+        ];
+
+        // 4. 从环境变量中获取API密钥
+        const apiKey = process.env.DEEPSEEK_API_KEY || 'sk-fa73fa4c4eaf402b9e770ee92cbc0dbf'; // 请替换或使用环境变量
+        if (!apiKey) {
+            console.error('错误: DEEPSEEK_API_KEY 环境变量未设置。');
+            return res.status(500).json({ error: '服务器配置错误。' });
+        }
+
+        // 5. 发起对 DeepSeek API 的请求
+        const response = await axios.post(
+            'https://api.deepseek.com/v1/chat/completions',
+            {
+                model: 'deepseek-chat',
+                messages: messages,
+                temperature: 0.7, // 中等温度，平衡准确性与创造性
+            },
+            {
+                headers: {
+                    'Authorization': `Bearer ${apiKey}`,
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
+
+        // 6. 提取并返回 AI 的回复
+        const aiReply = response.data.choices[0].message.content;
+
+        res.json({
+            original_prompt: message,
+            suggestion: aiReply
+        });
+
+    } catch (err) {
+        // 统一的错误处理
+        if (err.isAxiosError) {
+            console.error('调用 DeepSeek API 出错:', err.response?.data || err.message);
+            res.status(502).json({ error: '调用AI服务失败。' });
+        } else {
+            console.error('处理建议请求时发生错误:', err);
+            res.status(500).json({ error: '服务器内部错误。' });
+        }
+    }
+});
 
 module.exports = router;

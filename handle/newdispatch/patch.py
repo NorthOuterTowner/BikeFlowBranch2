@@ -210,13 +210,12 @@ def run_scheduler_for_timepoint(date_str, hour):
 # ---------- 示例入口 ----------
 '''
 if __name__ == '__main__':
-    run_scheduler_for_timepoint("2025-06-13", 9)
+    run_scheduler_for_timepoint("2025-06-13", 15)
 '''
     
 # patch.py 最后加上这段
 
-if __name__ == '__main__':
-    
+if __name__ == '__main__':    
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--date', required=True, help='调度日期，例如 2025-06-13')
