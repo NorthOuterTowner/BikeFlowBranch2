@@ -1153,10 +1153,11 @@ function focusStationOnMap(station) {
 
 .route-info {
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;  /* 改为垂直布局 */
   margin-bottom: 8px;
   font-size: 14px;
 }
+
 
 .route-info .label {
   font-weight: 600;

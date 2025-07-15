@@ -454,17 +454,56 @@ endCoord
    res.json(orsResponse.data);//返回的是这个东西（要以json格式），可以解析一下
 }
 ```
+
 8.修改调度方案
 （1）修改调度方案（POST）
 ```bash
 /dispatch/edit
-```
 请求格式
-```bash
-{
+```
     "id":[调度方案编号],
     "bikes":[调度数量]
 }
+返回格式
+```
+{
+  "code":200,
+  "msg":"修改成功
+}
+```
+9.使用deepseek
+（1）deepseek根据现有预测和调度方案和用户要求优化并返回增加的调度方案（post）
+```bash
+/suggestions/dispatch
+请求格式
+```bash
+{
+  "target_time": "2025-06-13T09:00:00Z",
+  "user_guidance": "优先保证Hoboken总站的车辆充足，可以从附近的站点调车过来。"
+}
+```
+返回格式
+```bash
+{
+    "schedule_time": "2025-06-13T09:35:00Z",
+    "optimized_plan": [
+        {
+            "from_station_id": "HB101",
+            "to_station_id": "HB201",
+            "bikes_to_move": 2,
+            "reason": "HB101 has excess bikes (11) and HB201 is at risk of depletion (2)."
+        },
+        {
+            "from_station_id": "HB101",
+            "to_station_id": "HB203",
+            "bikes_to_move": 2,
+            "reason": "HB101 has excess bikes (11) and HB203 is at risk of depletion (4)."
+        }
+        ...
+    ]//调度方案建议
+}
+```
+
 9.统计数据
 （2）指定时间段总流量（POST）
 ```bash
