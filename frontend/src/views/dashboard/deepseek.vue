@@ -10,7 +10,8 @@ const router = useRouter()
 const welcoming = ref('管理员，欢迎您！')
 const fixedDate = computed(() => new Date().toLocaleDateString())
 const currentHour = computed(() => new Date().getHours() + ':00')
-const target_time = new Date().toISOString()  // 直接新建一个 ISO 时间字符串
+const target_time = new Date('2025-06-13T09:35:00Z').toISOString();
+  // 直接新建一个 ISO 时间字符串
 
 // 当前模式：'chat' 或 'plan'
 const currentMode = ref('chat')
