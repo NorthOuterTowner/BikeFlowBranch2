@@ -1,7 +1,7 @@
 <script setup>
-import { ref, computed, nextTick } from 'vue'
+import { ref, computed, nextTick, watch, onMounted} from 'vue'
 import { useRouter } from 'vue-router'
-import { postSuggestion } from '../../api/axios'
+import { postSuggestion, postDispatchPlan } from '../../api/axios'
 import request from '@/api/axios'
 
 const router = useRouter()
@@ -10,6 +10,7 @@ const router = useRouter()
 const welcoming = ref('管理员，欢迎您！')
 const fixedDate = computed(() => new Date().toLocaleDateString())
 const currentHour = computed(() => new Date().getHours() + ':00')
+const target_time = new Date().toISOString()  // 直接新建一个 ISO 时间字符串
 
 // 当前模式：'chat' 或 'plan'
 const currentMode = ref('chat')
@@ -18,10 +19,12 @@ const currentMode = ref('chat')
 const chatMessagesEl = ref(null)
 
 // 两组对话
-const chatMessages = ref([
-  // { sender: 'user'|'ai', text: '...' }
-])
+const chatMessages = ref([])
 const planMessages = ref([])
+
+//记录是否发送过初始化消息
+const hasSentChatInit = ref(false)
+const hasSentPlanInit = ref(false)
 
 // 新消息输入框
 const newMessage = ref('')
@@ -59,32 +62,9 @@ const scrollToBottom = () => {
   })
 }
 
-// const sendMessage = async () => {
-//   const text = newMessage.value.trim()
-//   if (!text) return
-
-//   messages.value.push({ sender: 'user', text })
-//   newMessage.value = ''
-//   scrollToBottom()
-
-//   const suggestion = await postSuggestion(text)
-//   if (suggestion) {
-//     messages.value.push({ sender: 'ai', text: suggestion })
-//   } else {
-//     messages.value.push({ sender: 'ai', text: '抱歉，获取回复失败，请稍后再试。' })
-//   }
-
-//   scrollToBottom()
-// }
-
 const sendMessage = async () => {
   const text = newMessage.value.trim()
   if (!text) return
-
-  // const targetMessages = currentMode.value === 'chat' ? chatMessages : planMessages
-  // targetMessages.value.push({ sender: 'user', text })
-  // newMessage.value = ''
-  // if (!newMessage.value.trim()) return
 
   const msg = {
     sender: 'user',
@@ -102,9 +82,9 @@ const sendMessage = async () => {
   try {
     let reply
     if (currentMode.value === 'chat') {
-      reply = await postSuggestion(text)  // 普通对话
+      reply = await postSuggestion(target_time,text)  // 普通对话
     } else {
-      reply = await postDispatchPlan(text)  // 生成方案
+      reply = await postDispatchPlan(target_time,text)  // 生成方案
     }
     if (currentMode.value === 'chat') {
       chatMessages.value.push({ sender: 'ai', text: reply })
@@ -135,6 +115,31 @@ const logout = async () => {
     router.push('/login')
   }
 }
+
+function sendInitMessage(mode) {
+  if (mode === 'chat' && !hasSentChatInit.value) {
+    chatMessages.value.push({
+      sender: 'ai',
+      text: '这是普通聊天模式，随便跟我说说什么吧。'
+    })
+    hasSentChatInit.value = true
+  } else if (mode === 'plan' && !hasSentPlanInit.value) {
+    planMessages.value.push({
+      sender: 'ai',
+      text: '在这里输入你想要的调度方案的修改，我会给你直接生成新的调度方案，你可以选择采纳或者不采纳。'
+    })
+    hasSentPlanInit.value = true
+  }
+}
+
+watch(currentMode, (newMode) => {
+  sendInitMessage(newMode)
+})
+
+onMounted(() => {
+  sendInitMessage(currentMode.value)
+})
+
 </script>
 
 
@@ -406,8 +411,8 @@ const logout = async () => {
 
 .chat-input-container {
   border-top: 1px solid #e2e8f0;
-  background: white;
-  padding: 10px 20px;
+  background: rgb(255, 255, 255);
+  padding: 20px 150px;
 }
 
 .chat-input-box {
@@ -416,7 +421,7 @@ const logout = async () => {
 
 .chat-input {
   flex: 1;
-  border: 1px solid #cbd5e1;
+  border: 1px solid #e2e8f0;
   border-radius: 8px;
   padding: 8px;
   resize: none;
