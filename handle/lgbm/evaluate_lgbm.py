@@ -28,8 +28,8 @@ y_in = df['inflow_next']
 y_out = df['outflow_next']
 
 # 加载模型
-model_in = joblib.load('./handle/lgbm/inflow_model.pkl')
-model_out = joblib.load('./handle/lgbm/outflow_model.pkl')
+model_in = joblib.load('./handle/lgbm/inflow_model_tuned.pkl')
+model_out = joblib.load('./handle/lgbm/outflow_model_tuned.pkl')
 
 # 预测
 df['pred_inflow'] = model_in.predict(X)
