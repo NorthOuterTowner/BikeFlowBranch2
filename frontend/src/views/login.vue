@@ -51,7 +51,9 @@
       if (res.data.code === 200) {
         messageStore.setMessage('登录成功', 'success')
 
+
       const user = res.data.data
+      console.log('前端登录接口返回的数据:', res.data.data)
 
       sessionStorage.setItem('token', user.token)
       sessionStorage.setItem('account', user.account)

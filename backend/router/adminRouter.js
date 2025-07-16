@@ -51,7 +51,7 @@ router.post('/login', async (req, res) => {
   let AdminContent;
   try{
     AdminContent = await Admin.findOne({
-      attributes: ['account', 'password'], 
+      attributes: ['account', 'password','email'], 
       where:{
         account:account,
         password:hashpwd
@@ -77,6 +77,7 @@ router.post('/login', async (req, res) => {
     let admin_info = AdminContent
     admin_info.password = ""
     admin_info.token = login_token
+    admin_info.email = admin_info.email || ""
 
     res.status(200).send({
       code:200,

@@ -19,6 +19,9 @@ const redisClient = require("../db/redis");
 
 const dispatchQueue = require("../queue/dispatchQueue");
 
+// 辅助函数
+const toYYYYMMDD = (date) => date.toISOString().slice(0, 10);
+
 /**
  * @api {post} /change 执行调度
  * @apiDescription 根据调度内容从起点站取车，计算调度完成时间，并在调度完成后将终点站单车余量增加。
@@ -370,11 +373,6 @@ const mapScheduleStatus = (statusInt) => {
     }
 };
 
-// 辅助函数，将 Date 对象格式化为 'YYYY-MM-DD'
-const toYYYYMMDD = (date) => {
-    return date.toISOString().slice(0, 10);
-};
-
 /**
  * @api {post} /reject 管理员拒绝该调度请求
  * @apiDescription 管理员通过调度ID拒绝该调度请求，只有状态为0（未使用）的调度可以被拒绝，拒绝后状态变为-1。
@@ -439,7 +437,7 @@ router.post('/reject',authMiddleware, async (req,res)=>{
  * @apiParam {String} query_time ISO 8601 格式的查询时间。
  * @apiParam {String} [role] 可选, 站点的角色 ('start' 或 'end')。
  */
-router.get('/by-station',authMiddleware, async (req, res) => {
+router.get('/by-station', authMiddleware, async (req, res) => {
     const { station_id, query_time, role } = req.query;
 
     // 1. 参数校验
@@ -457,59 +455,74 @@ router.get('/by-station',authMiddleware, async (req, res) => {
         }
 
         // (可选但推荐) 校验站点是否存在
-        const stationExists = await StationInfo.findByPk(station_id);
-        if (!stationExists) {
+        const { rows: stationExistsRows } = await db.async.all('SELECT 1 FROM station_info WHERE station_id = ? LIMIT 1', [station_id]);
+        if (stationExistsRows.length === 0) {
             return res.status(404).json({ error: `Station with ID ${station_id} not found.` });
         }
 
-        // 2. 动态构建查询条件 (合并时间和站点逻辑)
+        // 2. 动态构建 SQL 查询
         const dateForQuery = toYYYYMMDD(queryDate);
-        const originalHour = queryDate.getUTCHours();
-        const hourForQuery = Math.floor(originalHour / 3) * 3;
+        const hourForQuery = Math.floor(queryDate.getUTCHours() / 3) * 3;
 
-        let whereClause = {
-            date: dateForQuery,
-            hour: hourForQuery
-        };
+        // 基础SQL，使用别名 s, start_info, end_info
+        let baseSql = `
+            SELECT
+                s.id AS schedule_id,
+                s.bikes,
+                s.status,
+                s.updated_at,
+                start_info.station_id AS start_station_id,
+                start_info.station_name AS start_station_name,
+                start_info.lat AS start_lat,
+                start_info.lng AS start_lng,
+                end_info.station_id AS end_station_id,
+                end_info.station_name AS end_station_name,
+                end_info.lat AS end_lat,
+                end_info.lng AS end_lng
+            FROM
+                station_schedule AS s
+            LEFT JOIN
+                station_info AS start_info ON s.start_id = start_info.station_id
+            LEFT JOIN
+                station_info AS end_info ON s.end_id = end_info.station_id
+        `;
 
+        let whereConditions = 'WHERE s.date = ? AND s.hour = ?';
+        let params = [dateForQuery, hourForQuery];
+
+        // 动态添加站点和角色相关的查询条件
         if (role === 'start') {
-            whereClause.start_id = station_id;
+            whereConditions += ' AND s.start_id = ?';
+            params.push(station_id);
         } else if (role === 'end') {
-            whereClause.end_id = station_id;
+            whereConditions += ' AND s.end_id = ?';
+            params.push(station_id);
         } else {
-            whereClause[Op.or] = [
-                { start_id: station_id },
-                { end_id: station_id }
-            ];
+            whereConditions += ' AND (s.start_id = ? OR s.end_id = ?)';
+            params.push(station_id, station_id);
         }
 
+        const finalSql = `${baseSql} ${whereConditions} ORDER BY s.id ASC;`;
+
         // 3. 执行查询
-        const schedules = await StationSchedule.findAll({
-            where: whereClause,
-            include: [
-                { model: StationInfo, as: 'startStation', attributes: ['station_id', 'station_name', 'lat', 'lng'] },
-                { model: StationInfo, as: 'endStation', attributes: ['station_id', 'station_name', 'lat', 'lng'] }
-            ],
-            order: [['id', 'ASC']],
-            attributes: { exclude: ['start_id', 'end_id'] }
-        });
+        const { rows: schedules } = await db.async.all(finalSql, params);
 
         // 4. 格式化响应
         const formattedSchedules = schedules.map(schedule => ({
-            schedule_id: schedule.id,
+            schedule_id: schedule.schedule_id,
             bikes_to_move: schedule.bikes,
             status: mapScheduleStatus(schedule.status),
-            start_station: schedule.startStation ? {
-                id: schedule.startStation.station_id,
-                name: schedule.startStation.station_name,
-                lat: schedule.startStation.lat,
-                lng: schedule.startStation.lng
+            start_station: schedule.start_station_id ? {
+                id: schedule.start_station_id,
+                name: schedule.start_station_name,
+                lat: schedule.start_lat,
+                lng: schedule.start_lng
             } : null,
-            end_station: schedule.endStation ? {
-                id: schedule.endStation.station_id,
-                name: schedule.endStation.station_name,
-                lat: schedule.endStation.lat,
-                lng: schedule.endStation.lng
+            end_station: schedule.end_station_id ? {
+                id: schedule.end_station_id,
+                name: schedule.end_station_name,
+                lat: schedule.end_lat,
+                lng: schedule.end_lng
             } : null,
             updated_at: schedule.updated_at
         }));
@@ -523,7 +536,7 @@ router.get('/by-station',authMiddleware, async (req, res) => {
         });
 
     } catch (err) {
-        console.error('Schedule by Station & Time Lookup API Error:', err);
+        console.error('Schedule by Station & Time Lookup API Error (SQL):', err);
         res.status(500).json({ error: 'An internal server error occurred.' });
     }
 });
@@ -532,5 +545,97 @@ async function afterTimeSchedule(number,startStation,dispatchDate,dispatchHour){
   const changeSql = "update `station_real_data` set `stock` = `stock` - ? where `station_id` = ? and `date` = ? and `hour` = ?;"
   await db.async.run(changeSql,[number,startStation,dispatchDate,dispatchHour])
 }
+
+router.post('/edit',authMiddleware, async (req,res)=>{
+  let {id,bikes} = req.body
+  try{
+    const editSql = 'update `station_schedule` set `bikes` = ? where `id` = ?;'
+    await db.async.run(editSql,[bikes,id])
+    return res.status(200).send({
+      code:200,
+      msg:"调度信息修改成功"
+    })
+  }catch(err){
+    return res.status(500).send({
+      code:500,
+      err
+    })
+  }  
+});
+
+/**
+ * @api {post} /api/v1/dispatch/add 新增调度任务
+ * @apiDescription 将一条新的调度方案添加到 station_schedule 表中。
+ */
+router.post('/add', authMiddleware, async (req, res) => {
+    const { schedule_time, start_station_id, end_station_id, bikes_to_move } = req.body;
+
+    // 1. 输入验证
+    if (!schedule_time || !start_station_id || !end_station_id || !bikes_to_move) {
+        return res.status(400).json({ error: "请求体参数不完整或类型错误，需要 schedule_time, start_station_id, end_station_id, bikes_to_move。" });
+    }
+    if (typeof bikes_to_move !== 'number' || bikes_to_move <= 0) {
+        return res.status(400).json({ error: "调度车辆数 (bikes_to_move) 必须为正整数。" });
+    }
+    if (start_station_id === end_station_id) {
+        return res.status(400).json({ error: "起点站和终点站不能为同一站点。" });
+    }
+
+    const scheduleDate = new Date(schedule_time);
+    if (isNaN(scheduleDate.getTime())) {
+        return res.status(400).json({ error: '无效的 schedule_time 格式。' });
+    }
+
+    try {
+        // 2. 验证站点ID是否存在 (并发查询提高效率)
+        const [startStationRows, endStationRows] = await Promise.all([
+            db.async.all('SELECT 1 FROM station_info WHERE station_id = ?', [start_station_id]),
+            db.async.all('SELECT 1 FROM station_info WHERE station_id = ?', [end_station_id])
+        ]);
+
+        if (startStationRows.rows.length === 0) {
+            return res.status(404).json({ error: `起点站ID '${start_station_id}' 不存在。` });
+        }
+        if (endStationRows.rows.length === 0) {
+            return res.status(404).json({ error: `终点站ID '${end_station_id}' 不存在。` });
+        }
+
+        // 3. 准备插入的数据
+        const dateForQuery = toYYYYMMDD(scheduleDate);
+        // 注意：这里是按照3小时周期逻辑来存储，如果希望直接存原始小时，可以去掉 Math.floor
+        const hourForQuery = Math.floor(scheduleDate.getUTCHours() / 3) * 3;
+        const newUpdatedAt = new Date();
+
+        // 4. 执行 INSERT 操作
+        const sql = `
+            INSERT INTO station_schedule (date, hour, start_id, end_id, bikes, status, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?);
+        `;
+        // status 默认为 0 (pending)
+        const params = [dateForQuery, hourForQuery, start_station_id, end_station_id, bikes_to_move, 0, newUpdatedAt];
+
+        const { result } = await db.async.run(sql, params);
+
+        // 5. 构造并返回成功响应
+        res.status(201).json({
+            message: "调度任务已成功添加。",
+            schedule: {
+                id: result.insertId, // 获取新插入记录的自增ID
+                date: dateForQuery,
+                hour: hourForQuery,
+                start_id: start_station_id,
+                end_id: end_station_id,
+                bikes: bikes_to_move,
+                status: 0,
+                updated_at: newUpdatedAt.toISOString()
+            }
+        });
+
+    } catch (err) {
+        console.error('Add Schedule API Error:', err);
+        res.status(500).json({ error: '服务器内部错误。' });
+    }
+});
+
 
 module.exports = router;

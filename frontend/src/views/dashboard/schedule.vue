@@ -18,12 +18,27 @@ import Stroke from 'ol/style/Stroke'
 import Icon from 'ol/style/Icon'
 import Text from 'ol/style/Text'
 import {Zoom } from 'ol/control'
+import StationInfo from '../dashboard/predictStationInf.vue'
+import { c } from 'naive-ui'
 
 const mapContainer = ref(null)
 let mapInstance = null
 let vectorLayer = null
 let dispatchLayer = null //调度方案图层
 const router = useRouter()
+const showStationInfoDialog = ref(false) // 控制弹窗显示
+const selectedStation = ref(null)
+
+function handleStationClick(station) {
+  selectedStation.value = station
+  showStationInfoDialog.value = true
+  console.log('点击了站点:', station)
+}
+
+const handleDialogClose = () => {
+  showStationInfoDialog.value = false
+  selectedStation.value = null
+}
 
 // 状态管理
 const stations = ref([])
@@ -41,20 +56,17 @@ const tooltip = ref(null)
 const showTooltip = ref(false)
 const tooltipContent = ref('')
 const tooltipPosition = ref({ x: 0, y: 0 })
+
+// 固定日期和当前小时
 const fixedDate = computed(() => {
   return localStorage.getItem('selectedDate') || new Date().toISOString().split('T')[0]
 })
-const currentHour = getCurrentHourString()
+const currentHour = localStorage.getItem('selectedHour')
 
 // 在调度方案相关状态部分添加
 const dispatchLoading = ref(false) // 调度数据加载状态
 const dispatchError = ref(null) // 调度数据加载错误
 
-function getCurrentHourString() {
-  const now = new Date()
-  const hour = now.getHours().toString().padStart(2, '0')
-  return `${hour}:00`
-}
 /**
  * 获取调度方案数据
  * @param {string} queryTime - 查询时间，ISO 8601格式
@@ -194,7 +206,7 @@ function createDispatchArrowStyleWithStatus(quantity, status, color = '#ff6b35')
     case '待执行':
       statusColor = '#ff6b35' // 橙色
       break
-    case '执行中':
+    case '正在执行':
       statusColor = '#28a745' // 绿色
       break
     case '已完成':
@@ -324,7 +336,7 @@ function addDispatchesToMapWithStatus(dispatches) {
       case '待执行':
         arrowColor = '#ff6b35'
         break
-      case '执行中':
+      case '正在执行':
         arrowColor = '#28a745'
         break
       case '已完成':
@@ -366,7 +378,7 @@ async function toggleDispatchLayerWithAPI() {
     // 显示调度图层
     if (dispatchPlans.value.length === 0) {
       // 构建查询时间
-      const queryTime = buildQueryTime(fixedDate.value, '09:00')
+      const queryTime = buildQueryTime(fixedDate.value, currentHour)
       
       // 获取真实的调度方案数据
       await fetchDispatchPlans(queryTime)
@@ -685,7 +697,6 @@ function initializeMap() {
       minZoom: 3
     }),
     controls: [] 
-
   })
 
   // 站点图层
@@ -704,8 +715,35 @@ function initializeMap() {
 
   // 添加鼠标移动事件监听器用于悬停提示
   mapInstance.on('pointermove', onMapHoverWithStatus)
+  
+  // 添加点击事件监听器
+  mapInstance.on('click', onMapClick)
+  
   console.log('地图初始化完成')
 }
+
+function onMapClick(evt) {
+  if (!mapInstance) return
+  
+  const pixel = mapInstance.getEventPixel(evt.originalEvent)
+  const feature = mapInstance.forEachFeatureAtPixel(pixel, function(feature) {
+    return feature
+  })
+
+  if (feature) {
+    const stationData = feature.get('stationData')
+    const dispatchData = feature.get('dispatchData')
+    
+    if (stationData) {
+      // 点击的是站点，打开弹窗
+      handleStationClick(stationData)
+    } else if (dispatchData) {
+      // 点击的是调度线条，可以在这里处理调度信息的点击
+      console.log('点击了调度线条:', dispatchData)
+    }
+  }
+}
+
 
 /**
  * 更新地图显示
@@ -976,6 +1014,16 @@ defineExpose({
     >
       {{ tooltipContent }}
     </div>
+
+    <!-- 站点信息弹窗 -->
+    <StationInfo
+      :show="showStationInfoDialog"
+      :station="selectedStation"
+      :date="fixedDate"
+      :hour="currentHour"
+      @update:show="handleDialogClose"
+    />
+    
     
   </div>
 </template>
@@ -1123,6 +1171,15 @@ defineExpose({
   display: flex;
   align-items: center;
   gap: 12px;
+}
+.dispatch-toggle-btn {
+  padding: 8px 16px;
+  background-color: #091275;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s, transform 0.2s;
 }
 .dispatch-toggle-btn:disabled {
   opacity: 0.6;

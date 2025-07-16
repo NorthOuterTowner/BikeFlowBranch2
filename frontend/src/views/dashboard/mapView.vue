@@ -40,6 +40,10 @@ function handleStationClick(station) {
   console.log('点击了站点:', station)
 }
 
+const onSearchClick = () => {
+  handleSearch(searchQuery.value, stations.value, mapInstance.value)
+}
+
 const handleDialogClose = () => {
   showStationInfoDialog.value = false
   selectedStation.value = null
@@ -52,12 +56,17 @@ const handleHourChange = async () => {
 }
 
 const logout = async () => {
+  const confirmed = window.confirm('确定要退出登录吗？')
+  if (!confirmed) {
+    // 用户取消退出
+    return
+  }
+
   try {
     await request.post('/api/user/logout')
   } catch (error) {
     console.warn('登出失败，可忽略', error)
   } finally {
-    // 清除所有 sessionStorage 项
     sessionStorage.clear()
     router.push('/login')
   }
@@ -98,9 +107,9 @@ onMounted(async () => {
             placeholder="搜索站点..." 
             class="search-input"
             v-model="searchQuery"
-            @keyup.enter="handleSearch"
+            @keyup.enter="onSearchClick"
           />
-          <button class="search-button" @click="handleSearch">搜索</button>
+          <button class="search-button" @click="onSearchClick">搜索</button>
         </div>
       </div>
       <div class="user-info">

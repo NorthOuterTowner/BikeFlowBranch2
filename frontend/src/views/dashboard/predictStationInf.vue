@@ -28,14 +28,16 @@ const emit = defineEmits(['update:show'])
 // 状态
 const loading = ref(false)
 const actualBikeNum = ref(0)
-const predictData = ref(null)
+const dispatchData = ref(null)
 const error = ref('')
 
 // 计算属性
 const formattedDateTime = computed(() => {
   if (!props.date || !props.hour) return ''
-  return `${props.date}T${props.hour}:00:00Z`
+  const hourOnly = props.hour.split(':')[0]  // 去掉 ":00" 部分
+  return `${props.date}T${hourOnly.padStart(2, '0')}:00:00Z`
 })
+
 
 // 获取实际单车数量
 async function fetchActualBikeNum() {
@@ -62,27 +64,21 @@ async function fetchActualBikeNum() {
     actualBikeNum.value = 0
   }
 }
-
-// 获取预测数据
-async function fetchPredictData() {
+async function fetchDispatchData() {
   if (!props.station?.station_id || !formattedDateTime.value) return
   
   try {
-    const response = await request.get('/predict/station', {
+    const response = await request.get('/dispatch/by-station', {
       params: {
         station_id: props.station.station_id,
-        predict_time: formattedDateTime.value
+        query_time: formattedDateTime.value
       }
     })
     
-    if (response.data && response.data.status) {
-      predictData.value = response.data
-    } else {
-      predictData.value = null
-    }
+    dispatchData.value = response.data
   } catch (err) {
-    console.error('获取预测数据失败:', err)
-    predictData.value = null
+    console.error('获取调度数据失败:', err)
+    dispatchData.value = null
   }
 }
 
@@ -96,7 +92,7 @@ async function loadStationData() {
   try {
     await Promise.all([
       fetchActualBikeNum(),
-      fetchPredictData()
+      fetchDispatchData()
     ])
   } catch (err) {
     console.error('加载站点数据失败:', err)
@@ -277,106 +273,183 @@ watch([() => props.date, () => props.hour], () => {
                   <div class="card-value actual-value">{{ actualBikeNum }}</div>
                   <div class="card-label">实际单车数量</div>
                 </div>
+              </div>
+              <!-- 数据对比卡片结束 -->
+
+              <!-- 调度信息 -->
+              <div class="info-section">
+                <div class="section-header">
+                  <div class="section-icon dispatch-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                      <polyline points="9,22 9,12 15,12 15,22"/>
+                    </svg>
+                  </div>
+                  <h4 class="section-title">调度信息</h4>
+                </div>
+
+                <div v-if="dispatchData && dispatchData.schedules && dispatchData.schedules.length > 0" class="dispatch-content">
+                  <!-- 调度统计 -->
+                  <div class="dispatch-stats">
+                    <div class="stat-item">
+                      <div class="stat-icon total-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                          <circle cx="9" cy="7" r="4"/>
+                          <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+                          <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                        </svg>
+                      </div>
+                      <div class="stat-content">
+                        <div class="stat-value">{{ dispatchData.schedules.length }}</div>
+                        <div class="stat-label">总调度任务</div>
+                      </div>
+                    </div>
+                    
+                    <div class="stat-item">
+                      <div class="stat-icon in-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                          <polyline points="7.5,4.21 12,6.81 16.5,4.21"/>
+                          <polyline points="7.5,19.79 7.5,14.6 3,12"/>
+                          <polyline points="21,12 16.5,14.6 16.5,19.79"/>
+                        </svg>
+                      </div>
+                      <div class="stat-content">
+                        <div class="stat-value">{{ dispatchData.schedules.filter(s => s.end_station.id === station.station_id).length }}</div>
+                        <div class="stat-label">调入任务</div>
+                      </div>
+                    </div>
+                    
+                    <div class="stat-item">
+                      <div class="stat-icon out-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                          <polyline points="16,17 21,12 16,7"/>
+                          <line x1="21" y1="12" x2="9" y2="12"/>
+                        </svg>
+                      </div>
+                      <div class="stat-content">
+                        <div class="stat-value">{{ dispatchData.schedules.filter(s => s.start_station.id === station.station_id).length }}</div>
+                        <div class="stat-label">调出任务</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- 调度任务列表 -->
+                  <div class="dispatch-list">
+                    <div v-for="schedule in dispatchData.schedules" :key="schedule.schedule_id" class="dispatch-item">
+                      <div class="dispatch-item-header">
+                        <div class="dispatch-type" :class="schedule.start_station.id === station.station_id ? 'outbound' : 'inbound'">
+                          <svg v-if="schedule.start_station.id === station.station_id" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                            <polyline points="16,17 21,12 16,7"/>
+                            <line x1="21" y1="12" x2="9" y2="12"/>
+                          </svg>
+                          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
+                            <polyline points="8,7 3,12 8,17"/>
+                            <line x1="3" y1="12" x2="15" y2="12"/>
+                          </svg>
+                          {{ schedule.start_station.id === station.station_id ? '调出' : '调入' }}
+                        </div>
+                        <div class="dispatch-status" :style="{ backgroundColor: getStatusColor(schedule.status) }">
+                          {{ getStatusText(schedule.status) }}
+                        </div>
+                      </div>
+                      
+                      <div class="dispatch-item-body">
+                        <div class="dispatch-route">
+                          <div class="route-station start-station">
+                            <div class="station-marker">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                                <circle cx="12" cy="10" r="3"/>
+                              </svg>
+                            </div>
+                            <div class="station-info">
+                              <div class="station-name">{{ schedule.start_station.name }}</div>
+                              <div class="station-id">{{ schedule.start_station.id }}</div>
+                            </div>
+                          </div>
+                          
+                          <div class="route-arrow">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                              <line x1="5" y1="12" x2="19" y2="12"/>
+                              <polyline points="12,5 19,12 12,19"/>
+                            </svg>
+                          </div>
+                          
+                          <div class="route-station end-station">
+                            <div class="station-marker">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                                <circle cx="12" cy="10" r="3"/>
+                              </svg>
+                            </div>
+                            <div class="station-info">
+                              <div class="station-name">{{ schedule.end_station.name }}</div>
+                              <div class="station-id">{{ schedule.end_station.id }}</div>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div class="dispatch-details">
+                          <div class="detail-item">
+                            <div class="detail-label">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                <polyline points="14,2 14,8 20,8"/>
+                                <line x1="16" y1="13" x2="8" y2="13"/>
+                                <line x1="16" y1="17" x2="8" y2="17"/>
+                                <polyline points="10,9 9,9 8,9"/>
+                              </svg>
+                              调度ID
+                            </div>
+                            <div class="detail-value">#{{ schedule.schedule_id }}</div>
+                          </div>
+                          
+                          <div class="detail-item">
+                            <div class="detail-label">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                <polyline points="14,2 14,8 20,8"/>
+                                <line x1="16" y1="13" x2="8" y2="13"/>
+                                <line x1="16" y1="17" x2="8" y2="17"/>
+                                <polyline points="10,9 9,9 8,9"/>
+                              </svg>
+                              调度数量
+                            </div>
+                            <div class="detail-value bikes-count">{{ schedule.bikes_to_move }} 辆</div>
+                          </div>
+                          
+                          <div class="detail-item">
+                            <div class="detail-label">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"/>
+                                <polyline points="12,6 12,12 16,14"/>
+                              </svg>
+                              更新时间
+                            </div>
+                            <div class="detail-value">{{ new Date(schedule.updated_at).toLocaleString() }}</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
                 
-                <div v-if="predictData" class="data-card predict-card">
-                  <div class="card-header">
-                    <div class="card-icon predict-icon">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-                      </svg>
-                    </div>
-                    <div class="card-title">预测数据</div>
-                  </div>
-                  <div class="card-value predict-value">{{ predictData.status.stock }}</div>
-                  <div class="card-label">预测单车数量</div>
-                </div>
-              </div>
-              
-              <!-- 预测流量数据 -->
-              <div v-if="predictData" class="flow-section">
-                <div class="section-header">
-                  <div class="section-icon">
+                <div v-else class="no-dispatch-data">
+                  <div class="no-data-icon">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
+                      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                      <polyline points="9,22 9,12 15,12 15,22"/>
                     </svg>
                   </div>
-                  <h4 class="section-title">流量预测</h4>
-                </div>
-                <div class="flow-grid">
-                  <div class="flow-item inflow">
-                    <div class="flow-icon">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M12 19V5m-7 7l7-7 7 7"/>
-                      </svg>
-                    </div>
-                    <div class="flow-content">
-                      <div class="flow-value">{{ predictData.status.inflow }}</div>
-                      <div class="flow-label">预测入车流</div>
-                    </div>
-                  </div>
-                  <div class="flow-item outflow">
-                    <div class="flow-icon">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M12 5v14m7-7-7 7-7-7"/>
-                      </svg>
-                    </div>
-                    <div class="flow-content">
-                      <div class="flow-value">{{ predictData.status.outflow }}</div>
-                      <div class="flow-label">预测出车流</div>
-                    </div>
-                  </div>
+                  <div class="no-data-text">暂无调度信息</div>
                 </div>
               </div>
-              
-              <!-- 对比分析 -->
-              <div v-if="predictData" class="analysis-section">
-                <div class="section-header">
-                  <div class="section-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M18 20V10"/>
-                      <path d="M12 20V4"/>
-                      <path d="M6 20v-6"/>
-                    </svg>
-                  </div>
-                  <h4 class="section-title">对比分析</h4>
-                </div>
-                <div class="analysis-card">
-                  <div class="comparison-display">
-                    <div class="comparison-item">
-                      <span class="comparison-label">实际数量</span>
-                      <span class="actual-number">{{ actualBikeNum }}</span>
-                    </div>
-                    <div class="vs-divider">VS</div>
-                    <div class="comparison-item">
-                      <span class="comparison-label">预测数量</span>
-                      <span class="predict-number">{{ predictData.status.stock }}</span>
-                    </div>
-                  </div>
-                  <div class="difference-display">
-                    <div class="difference-label">差异值</div>
-                    <div class="difference-value" :class="{ 
-                      'positive': (predictData.status.stock-actualBikeNum ) > 0,
-                      'negative': (predictData.status.stock-actualBikeNum ) < 0,
-                      'zero': (predictData.status.stock-actualBikeNum) === 0
-                    }">
-                      <span class="difference-sign">{{ predictData.status.stock-actualBikeNum > 0 ? '+' : predictData.status.stock-actualBikeNum < 0 ? '-' : '' }}</span>
-                      <span class="difference-number">{{ Math.abs(predictData.status.stock-actualBikeNum) }}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              
-              <!-- 暂无预测数据 -->
-              <div v-if="!predictData" class="no-data-section">
-                <div class="no-data-icon">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"/>
-                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
-                    <path d="M12 17h.01"/>
-                  </svg>
-                </div>
-                <span class="no-data-text">暂无预测数据</span>
-              </div>
+              <!-- 调度信息结束 -->
             </div>
           </div>
         </div>
@@ -384,6 +457,7 @@ watch([() => props.date, () => props.hour], () => {
     </div>
   </Transition>
 </template>
+
 
 <style scoped>
 /* 过渡动画 */

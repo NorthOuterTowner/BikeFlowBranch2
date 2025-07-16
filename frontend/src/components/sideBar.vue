@@ -33,6 +33,26 @@
       </div>
       
       <div class="menu-section">
+        <h1 @click="toggleSection('deepseek')" class="menu-title">
+          <span class="title-text" v-show="!collapsed">DeepSeek问答</span>
+          <span class="arrow" v-show="!collapsed">{{ openSections.deepseek ? '▼' : '▶' }}</span>
+        </h1>
+        <ul v-show="openSections.deepseek && !collapsed">
+          <li><router-link to="/dashboard/deepseek">对话界面</router-link></li>
+        </ul>
+      </div>
+
+      <div class="menu-section">
+        <h1 @click="toggleSection('statics')" class="menu-title">
+          <span class="title-text" v-show="!collapsed">统计数据</span>
+          <span class="arrow" v-show="!collapsed">{{ openSections.statistics ? '▼' : '▶' }}</span>
+        </h1>
+        <ul v-show="openSections.statics && !collapsed">
+          <li><router-link to="/dashboard/statistics">整体统计</router-link></li>
+        </ul>
+      </div>
+
+      <div class="menu-section">
         <h1 @click="toggleSection('settings')" class="menu-title">
           <span class="title-text" v-show="!collapsed">设置</span>
           <span class="arrow" v-show="!collapsed">{{ openSections.settings ? '▼' : '▶' }}</span>
@@ -61,9 +81,11 @@ const props = defineProps({
 const emit = defineEmits(['toggle-collapse'])
 
 const openSections = reactive({
-  predict: false,  // 默认展开或折叠
+  predict: false,  
   schedule: false,
   settings: false,
+  deepseek: false,
+  statistics: false,
 })
 
 function toggleSection(section) {

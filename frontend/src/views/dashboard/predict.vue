@@ -35,6 +35,71 @@ const selectedDate = computed(() => {
 const currentHour = new Date().getHours()
 const selectedHour = ref(currentHour.toString().padStart(2, '0'))
 
+const handleSearch = () => {
+  console.log('搜索按钮被点击，搜索词:', searchQuery.value)
+  
+  if (!searchQuery.value.trim()) {
+    console.log('搜索词为空')
+    alert('请输入搜索内容')
+    return
+  }
+  
+  if (!stations.value || stations.value.length === 0) {
+    console.log('没有站点数据')
+    alert('站点数据未加载')
+    return
+  }
+  
+  if (!mapInstance) {
+    console.log('地图实例未初始化')
+    alert('地图未初始化')
+    return
+  }
+  
+  console.log('开始搜索，当前站点数量:', stations.value.length)
+  
+  const matchedStations = stations.value.filter(station => {
+    const stationName = station.station_name || ''
+    const stationId = station.station_id || ''
+    const searchTerm = searchQuery.value.toLowerCase().trim()
+    
+    return stationName.toLowerCase().includes(searchTerm) ||
+           stationId.toLowerCase().includes(searchTerm)
+  })
+  
+  console.log('匹配到的站点:', matchedStations)
+  
+  if (matchedStations.length > 0) {
+    const station = matchedStations[0]
+    console.log('选中的站点:', station)
+    
+    // 检查坐标是否有效
+    const longitude = parseFloat(station.longitude)
+    const latitude = parseFloat(station.latitude)
+    
+    if (isNaN(longitude) || isNaN(latitude)) {
+      console.error('站点坐标无效:', station)
+      alert('站点坐标数据有误')
+      return
+    }
+    
+    try {
+      mapInstance.getView().animate({
+        center: fromLonLat([longitude, latitude]),
+        zoom: 18,
+        duration: 1000
+      })
+      console.log('地图动画执行成功')
+    } catch (error) {
+      console.error('地图动画执行失败:', error)
+      alert('地图导航失败')
+    }
+  } else {
+    console.log('未找到匹配的站点')
+    alert('未找到相关站点')
+  }
+}
+
 // 差值统计
 const differenceStats = ref({
   maxInflow: 0,
@@ -241,12 +306,17 @@ const toggleTable = () => {
 }
 
 const logout = async () => {
+  const confirmed = window.confirm('确定要退出登录吗？')
+  if (!confirmed) {
+    // 用户取消退出
+    return
+  }
+
   try {
     await request.post('/api/user/logout')
   } catch (error) {
     console.warn('登出失败，可忽略', error)
   } finally {
-    // 清除所有 sessionStorage 项
     sessionStorage.clear()
     router.push('/login')
   }
