@@ -64,4 +64,39 @@ export async function getStationAssign(params = {}) {
   }
 }
 
+export async function postSuggestion(message) {
+  const account = sessionStorage.getItem('account')  // 如果也存了账号
+  const token = sessionStorage.getItem('token')
+  console.log('即将使用的 token：', token)
+  try {
+    const res = await fetch('/suggestions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        account: account,   // 'admin' 也可以直接写死
+        token: token
+      },
+      body: JSON.stringify({ message })
+    })
+
+    if (!res.ok) {
+      console.error('请求失败：HTTP 状态码', res.status)
+      return null
+    }
+
+    const data = await res.json()
+    console.log('后端返回数据：', data)
+    if (!data || typeof data !== 'object' || !data.suggestion) {
+      console.error('接口返回格式不符合预期：', data)
+      return null
+    }
+    return data.suggestion
+  } catch (error) {
+    console.error('请求出错', error)
+    return null
+  }
+}
+
+
+
 export default request

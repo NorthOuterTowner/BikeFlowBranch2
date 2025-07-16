@@ -16,6 +16,7 @@ export function useStationMap() {
   const stationStatusMap = ref({})
   const loading = ref(false)
 
+
   // 用 ref 包裹
   const mapInstance = ref(null)
   let vectorLayer = null
@@ -60,72 +61,64 @@ export function useStationMap() {
     console.log('地图初始化完成')
   }
 
-  /**
-   * 搜索函数
-   */
-  function handleSearch(query) {
-    console.log('搜索按钮被点击，搜索词:', query)
+ /**
+ * 搜索并定位站点
+ * @param {string} searchValue - 搜索关键词
+ * @param {Array} stations - 站点数组
+ * @param {Object} mapInstance - 地图实例
+ * @param {Function} showAlert - 弹窗提示函数（alert 或自定义）
+ */
+function handleSearch(searchValue, stations, mapInstance, showAlert = alert) {
+  const keyword = (searchValue || '').toLowerCase().trim()
 
-    if (!query || !query.trim()) {
-      console.log('搜索词为空')
-      alert('请输入搜索内容')
-      return
-    }
-
-    if (!stations.value || stations.value.length === 0) {
-      console.log('没有站点数据')
-      alert('站点数据未加载')
-      return
-    }
-
-    if (!mapInstance.value) {
-      console.log('地图实例未初始化')
-      alert('地图未初始化')
-      return
-    }
-
-    console.log('开始搜索，当前站点数量:', stations.value.length)
-
-    const searchTerm = query.toLowerCase().trim()
-    const matchedStations = stations.value.filter(station => {
-      const stationName = station.station_name || ''
-      const stationId = station.station_id || ''
-      return stationName.toLowerCase().includes(searchTerm) ||
-             stationId.toLowerCase().includes(searchTerm)
-    })
-
-    console.log('匹配到的站点:', matchedStations)
-
-    if (matchedStations.length > 0) {
-      const station = matchedStations[0]
-      console.log('选中的站点:', station)
-
-      const longitude = parseFloat(station.longitude)
-      const latitude = parseFloat(station.latitude)
-
-      if (isNaN(longitude) || isNaN(latitude)) {
-        console.error('站点坐标无效:', station)
-        alert('站点坐标数据有误')
-        return
-      }
-
-      try {
-        mapInstance.value.getView().animate({
-          center: fromLonLat([longitude, latitude]),
-          zoom: 20,
-          duration: 1000
-        })
-        console.log('地图动画执行成功')
-      } catch (error) {
-        console.error('地图动画执行失败:', error)
-        alert('地图导航失败')
-      }
-    } else {
-      console.log('未找到匹配的站点')
-      alert('未找到相关站点')
-    }
+  if (!keyword) {
+    showAlert('请输入搜索内容')
+    return
   }
 
+  if (!stations || stations.length === 0) {
+    showAlert('站点数据未加载')
+    return
+  }
+
+  if (!mapInstance) {
+    showAlert('地图未初始化')
+    return
+  }
+
+  // 过滤匹配站点
+  const matchedStations = stations.filter(station => {
+    const name = station.station_name || ''
+    const id = station.station_id || ''
+    return name.toLowerCase().includes(keyword) || id.toLowerCase().includes(keyword)
+  })
+
+  if (matchedStations.length === 0) {
+    showAlert('未找到相关站点')
+    return
+  }
+
+  const station = matchedStations[0]
+
+  const longitude = parseFloat(station.longitude)
+  const latitude = parseFloat(station.latitude)
+
+  if (isNaN(longitude) || isNaN(latitude)) {
+    showAlert('站点坐标数据有误')
+    return
+  }
+
+  try {
+    mapInstance.getView().animate({
+      center: fromLonLat([longitude, latitude]),
+      zoom: 18,
+      duration: 1000
+    })
+  } catch (error) {
+    console.error('地图动画执行失败:', error)
+    showAlert('地图导航失败')
+  }
+}
   /**
    * 更新地图点位
    */

@@ -25,9 +25,18 @@
             <div class="date-setting-container">
               <h3>日期设置</h3>
               <div class="date-setting">
-                <label for="date-input">当前日期：</label>
-                <input id="date-input" type="date" v-model="selectedDate" />
-                <button class="save-date-button" @click="saveDate">保存日期</button>
+                  <label for="date-input">当前日期：</label>
+                  <input id="date-input" type="date" v-model="selectedDate" />
+
+                  <label for="hour-select">当前时间：</label>
+                  <select id="hour-select" v-model="selectedHour">
+                    <option v-for="h in 24" :key="h" :value="(h < 10 ? '0' + h : h) + ':00'">
+                      {{ (h < 10 ? '0' + h : h) + ':00' }}
+                    </option>
+                  </select>
+
+                  <button class="save-date-button" @click="saveDateTime">保存</button>
+
                 <!-- 内联成功提示 -->
                 <div v-if="showInlineSuccess" class="inline-success-toast">
                   <div class="inline-toast-icon">✓</div>
@@ -35,9 +44,10 @@
                 </div>
               </div>
               <div class="current-date-display">
-                <p>已设置日期：{{ displayDate }}</p>
+                <p>已设置日期时间：{{ displayDate }} {{ displayHour }}</p>
               </div>
             </div>
+            
           </div>
         </div>
       </div>
@@ -55,27 +65,41 @@ const showInlineSuccess = ref(false)
 const inlineSuccessMessage = ref('')
 
 const logout = async () => {
+  const confirmed = window.confirm('确定要退出登录吗？')
+  if (!confirmed) {
+    // 用户取消退出
+    return
+  }
+
   try {
     await request.post('/api/user/logout')
   } catch (error) {
     console.warn('登出失败，可忽略', error)
   } finally {
-    // 清除所有 sessionStorage 项
     sessionStorage.clear()
     router.push('/login')
   }
 }
 
+
 // 读取 localStorage 中的日期，若无则使用今天
 const today = new Date().toISOString().split('T')[0]
 const selectedDate = ref(localStorage.getItem('selectedDate') || today)
+const selectedHour = ref(localStorage.getItem('selectedHour') || '09:00')
 
+const displayHour = computed(() => selectedHour.value)
 const displayDate = computed(() => {
-  if (selectedDate.value) {
-    return new Date(selectedDate.value).toLocaleDateString('zh-CN')
-  }
-  return ''
+  const date = new Date(selectedDate.value)
+  return date.toLocaleDateString('zh-CN')
 })
+
+const saveDateTime = () => {
+  localStorage.setItem('selectedDate', selectedDate.value)
+  localStorage.setItem('selectedHour', selectedHour.value)
+
+  const formattedDate = new Date(selectedDate.value).toLocaleDateString('zh-CN')
+  showInlineToast(`日期时间已保存为：${formattedDate} ${selectedHour.value}`)
+}
 
 // 显示内联成功提示
 const showInlineToast = (message) => {
