@@ -2,6 +2,7 @@ import pandas as pd
 import pymysql
 import joblib
 from datetime import datetime
+import numpy as np
 import warnings
 
 # 忽略DtypeWarning警告（可选）
@@ -10,7 +11,38 @@ warnings.filterwarnings('ignore', category=pd.errors.DtypeWarning)
 def get_connection():
     return pymysql.connect(host='localhost', user='root', password='123456', 
                          database='traffic', charset='utf8')
-
+def get_station_capacities(conn):
+    """获取站点容量信息"""
+    query = "SELECT station_id, capacity FROM station_info"
+    capacities = pd.read_sql(query, conn)
+    return capacities.set_index('station_id')['capacity'].to_dict()
+def calculate_stock(df, capacities):
+    """
+    计算库存预测
+    基于流入流出预测，确保库存不为0或负数
+    """
+    # 按站点分组计算
+    grouped = df.groupby('station_id')
+    
+    stock_values = []
+    for station_id, group in grouped:
+        capacity = capacities.get(station_id, 20)  # 默认容量20
+        
+        # 按时间排序
+        group = group.sort_values('timestamp')
+        
+        # 初始化库存(使用容量的一半或最后已知库存)
+        initial_stock = max(1, capacity // 2)
+        
+        # 计算库存变化
+        stock = [initial_stock]
+        for i in range(1, len(group)):
+            new_stock = stock[i-1] + group.iloc[i]['pred_inflow'] - group.iloc[i]['pred_outflow']
+            stock.append(max(1, min(new_stock, capacity)))  # 确保在[1, 容量]之间
+        
+        stock_values.extend(stock)
+    
+    return stock_values
 def add_features(df):
     """添加时间、滞后、节假日、天气特征，适用于 LightGBM"""
 
@@ -82,15 +114,16 @@ def add_features(df):
 def predict_and_write():
     conn = None
     try:
-        # 1. 加载数据和编码器（显式指定数据类型）
+        conn = get_connection()
+        
+        # 1. 加载数据和编码器
         df = pd.read_csv(
             './handle/lgbm/lgbm_raw_samples.csv',
             parse_dates=['timestamp'],
             dtype={
                 'station_id': 'str',
                 'inflow': 'float32',
-                'outflow': 'float32',
-                'is_holiday': 'float32'  # 如果存在该列
+                'outflow': 'float32'
             }
         )
         
@@ -115,7 +148,7 @@ def predict_and_write():
         df['station_id_encoded'] = encoder.transform(df['station_id'].astype(str))
         df['hour'] = df['timestamp'].dt.hour
         
-        # 4. 准备特征（检查特征是否存在）
+        # 4. 准备特征
         expected_features = [
             'station_id_encoded', 'hour', 'dayofweek', 'is_weekend', 'is_holiday',
             'temp', 'prcp', 'wspd',
@@ -132,23 +165,26 @@ def predict_and_write():
         model_in = joblib.load('./handle/lgbm/inflow_model_tuned.pkl')
         model_out = joblib.load('./handle/lgbm/outflow_model_tuned.pkl')
         
-        df['pred_inflow'] = model_in.predict(X)
-        df['pred_outflow'] = model_out.predict(X)
+        df['pred_inflow'] = np.maximum(0, model_in.predict(X))  # 确保非负
+        df['pred_outflow'] = np.maximum(0, model_out.predict(X))  # 确保非负
         
-        # 6. 写入数据库
-        conn = get_connection()
+        # 6. 计算库存预测
+        capacities = get_station_capacities(conn)
+        df['stock'] = calculate_stock(df, capacities)
+        
+        # 7. 写入数据库
         cursor = conn.cursor()
         
         # 准备批量插入数据
         data_to_insert = []
         for _, row in df.iterrows():
             data_to_insert.append((
-                str(row['station_id']),  # 确保为字符串
+                str(row['station_id']),
                 row['timestamp'].date(),
                 int(row['hour']),
                 float(row['pred_inflow']),
                 float(row['pred_outflow']),
-                0,  # stock
+                int(row['stock']),  # 确保为整数
                 datetime.now()
             ))
         
@@ -161,13 +197,15 @@ def predict_and_write():
         cursor.executemany(sql, data_to_insert)
         conn.commit()
         
-        print(f"成功写入 {len(df)} 条预测数据（时间范围: {df['timestamp'].min()} 至 {df['timestamp'].max()}）")
+        print(f"成功写入 {len(df)} 条预测数据（包含库存预测）")
+        print(f"时间范围: {df['timestamp'].min()} 至 {df['timestamp'].max()}")
+        print(f"库存范围: {df['stock'].min()}~{df['stock'].max()}")
         
     except Exception as e:
         print(f"[错误] 预测写入失败: {str(e)}")
         if conn:
             conn.rollback()
-        raise  # 重新抛出异常以便调试
+        raise
     finally:
         if conn:
             conn.close()
