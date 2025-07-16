@@ -145,73 +145,81 @@ router.post("/top", authMiddleware, async (req, res) => {
 });
 
 /**
- * @api {get} /flow/hour 查询小时总流量
- * @apiDescription 传入一个整点时间，返回该小时内系统中所有站点的总流入、总流出和总流量。
+ * @api {get} /flow/day 查询某天每小时的总流量
+ * @apiDescription 传入一个日期，返回该日期内0-23点每小时的系统总流量数据。
  * @access Private
  */
-router.get('/flow/hour', authMiddleware, async (req, res) => {
-    // 1. 从请求查询参数中获取时间点
-    const { query_time } = req.query;
+router.get('/flow/day', authMiddleware, async (req, res) => {
+    // 1. 从请求查询参数中获取日期
+    const { query_date } = req.query;
 
     // 2. 参数校验
-    if (!query_time) {
-        return res.status(400).json({ error: '请求失败，缺少 "query_time" 参数。' });
+    if (!query_date) {
+        return res.status(400).json({ error: '请求失败，缺少 "query_date" 参数。' });
     }
 
-    const queryDate = new Date(query_time);
-    if (isNaN(queryDate.getTime())) {
-        return res.status(400).json({ error: '无效的时间格式。请使用 ISO 8601 格式。' });
-    }
-    // 校验是否为整点时间
-    if (queryDate.getUTCMinutes() !== 0 || queryDate.getUTCSeconds() !== 0 || queryDate.getUTCMilliseconds() !== 0) {
-        return res.status(400).json({ error: '请求的时间点必须为整点时间。' });
+    // 验证日期格式是否有效 (例如 'YYYY-MM-DD')
+    const queryDate = new Date(query_date);
+    if (isNaN(queryDate.getTime()) || !/^\d{4}-\d{2}-\d{2}$/.test(query_date)) {
+        return res.status(400).json({ error: '无效的日期格式。请使用 "YYYY-MM-DD" 格式。' });
     }
 
     try {
         // 3. 准备SQL查询
-        // 使用 SUM() 聚合函数来计算总和
+        // 使用 HOUR(timestamp) 来按小时分组
+        // 使用 SUM() 来计算每小时的总和
         const sql = `
             SELECT
+                HOUR(timestamp) AS hour,
                 SUM(inflow) AS total_inflow,
                 SUM(outflow) AS total_outflow
             FROM
                 station_hourly_flow
             WHERE
-                timestamp = ?;
+                DATE(timestamp) = ?
+            GROUP BY
+                HOUR(timestamp)
+            ORDER BY
+                hour ASC;
         `;
 
-        // 格式化时间以匹配数据库的 DATETIME 类型
-        // 'YYYY-MM-DD HH:MM:SS'
-        const timestampForQuery = queryDate.toISOString().slice(0, 19).replace('T', ' ');
-        const params = [timestampForQuery];
+        const params = [query_date];
 
         // 4. 执行查询
         const { rows } = await db.async.all(sql, params);
 
-        // 5. 处理并返回结果
-        if (!rows || rows.length === 0 || rows[0].total_inflow === null) {
-            // 如果查询结果为空 (SUM返回null)，说明该小时没有流量数据
-            return res.json({
-                query_time: query_time,
-                total_inflow: 0,
-                total_outflow: 0,
-                total_flow: 0
-            });
-        }
+        // 5. 格式化并补全数据
+        // 创建一个包含0-23点默认数据的数组
+        const hourlyData = Array.from({ length: 24 }, (_, i) => ({
+            hour: i,
+            total_inflow: 0,
+            total_outflow: 0,
+            total_flow: 0
+        }));
 
-        const result = rows[0];
-        const totalInflow = parseInt(result.total_inflow, 10);
-        const totalOutflow = parseInt(result.total_outflow, 10);
+        // 用数据库返回的数据填充默认数组
+        rows.forEach(row => {
+            const hourIndex = row.hour;
+            if (hourIndex >= 0 && hourIndex < 24) {
+                const totalInflow = parseInt(row.total_inflow, 10);
+                const totalOutflow = parseInt(row.total_outflow, 10);
+                hourlyData[hourIndex] = {
+                    hour: hourIndex,
+                    total_inflow: totalInflow,
+                    total_outflow: totalOutflow,
+                    total_flow: totalInflow + totalOutflow
+                };
+            }
+        });
 
+        // 6. 返回最终结果
         res.json({
-            query_time: query_time,
-            total_inflow: totalInflow,
-            total_outflow: totalOutflow,
-            total_flow: totalInflow + totalOutflow // 总流量 = 总流入 + 总流出
+            query_date: query_date,
+            hourly_flows: hourlyData
         });
 
     } catch (err) {
-        console.error('Hourly Flow API Error:', err);
+        console.error('Daily Flow API Error:', err);
         res.status(500).json({ error: '服务器内部错误。' });
     }
 });

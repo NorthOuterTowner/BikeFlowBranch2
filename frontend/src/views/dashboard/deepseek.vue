@@ -1,7 +1,7 @@
 <script setup>
-import { ref, computed, nextTick } from 'vue'
+import { ref, computed, nextTick, watch, onMounted} from 'vue'
 import { useRouter } from 'vue-router'
-import { postSuggestion } from '../../api/axios'
+import { postSuggestion, postDispatchPlan } from '../../api/axios'
 import request from '@/api/axios'
 
 const router = useRouter()
@@ -10,15 +10,33 @@ const router = useRouter()
 const welcoming = ref('管理员，欢迎您！')
 const fixedDate = computed(() => new Date().toLocaleDateString())
 const currentHour = computed(() => new Date().getHours() + ':00')
+const target_time = new Date('2025-06-13T09:35:00Z').toISOString();
+  // 直接新建一个 ISO 时间字符串
 
-// 对话内容
+// 当前模式：'chat' 或 'plan'
+const currentMode = ref('chat')
+
+// 聊天消息容器 DOM 元素
+const chatMessagesEl = ref(null)
+
+const isLoading = ref(false)
+//const answer = ref(null)
+
+// 两组对话
+const chatMessages = ref([])
+const planMessages = ref([])
+
+//记录是否发送过初始化消息
+const hasSentChatInit = ref(false)
+const hasSentPlanInit = ref(false)
+
+// 新消息输入框
 const newMessage = ref('')
-const messages = ref([
-  { sender: 'ai', text: '你好！我是DeepSeek智能助手。请问有什么可以帮您？' }
-  ])
 
-// 聊天消息容器
-const chatMessages = ref(null)
+// 计算属性，根据当前模式返回对应的消息列表
+const messages = computed(() => {
+  return currentMode.value === 'chat' ? chatMessages.value : planMessages.value
+})
 
 const handleKeyDown = (e) => {
   if (e.shiftKey) {
@@ -33,34 +51,63 @@ const handleKeyDown = (e) => {
 
 // 格式化文本，将换行符替换为 <br>
 const formatText = (text) => {
-  return text.replace(/\n/g, '<br>')
+  return (text ?? '').replace(/\n/g, '<br>')
 }
 
 // 滚动到底部
 const scrollToBottom = () => {
   nextTick(() => {
-    if (chatMessages.value) {
-      chatMessages.value.scrollTop = chatMessages.value.scrollHeight
+    if (chatMessagesEl.value) {
+      chatMessagesEl.value.scrollTop = chatMessagesEl.value.scrollHeight
     }
   })
 }
 
-const sendMessage = async () => {
+async function sendMessage() {
   const text = newMessage.value.trim()
   if (!text) return
 
-  messages.value.push({ sender: 'user', text })
-  newMessage.value = ''
-  scrollToBottom()
-
-  const suggestion = await postSuggestion(text)
-  if (suggestion) {
-    messages.value.push({ sender: 'ai', text: suggestion })
-  } else {
-    messages.value.push({ sender: 'ai', text: '抱歉，获取回复失败，请稍后再试。' })
+  const msg = {
+    sender: 'user',
+    text
   }
 
-  scrollToBottom()
+  // 选择对应消息列表
+  const messagesList = currentMode.value === 'chat' ? chatMessages.value : planMessages.value
+
+  messagesList.push(msg)
+  newMessage.value = ''
+
+  // 加入 loading 占位消息
+  const loadingMsg = { sender: 'ai', text: '正在深度思考中，请稍候...', loading: true }
+  messagesList.push(loadingMsg)
+
+  try {
+    let reply
+    if (currentMode.value === 'chat') {
+      reply = await postSuggestion(target_time, text)
+    } else {
+      reply = await postDispatchPlan(target_time, text)
+    }
+    // 找到 loadingMsg 替换为真正回复
+    const idx = messagesList.indexOf(loadingMsg)
+    if (idx !== -1) {
+      messagesList[idx] = { sender: 'ai', text: reply }
+    }
+  } catch (error) {
+    const errMsg = '出错了，请稍后再试'
+    const idx = messagesList.indexOf(loadingMsg)
+    if (idx !== -1) {
+      messagesList[idx] = { sender: 'ai', text: errMsg }
+    }
+  }
+
+  nextTick(() => {
+    if (chatMessagesEl.value) {
+      chatMessagesEl.value.scrollTop = chatMessagesEl.value.scrollHeight
+    }
+    scrollToBottom()
+  })
 }
 
 
@@ -76,6 +123,31 @@ const logout = async () => {
     router.push('/login')
   }
 }
+
+function sendInitMessage(mode) {
+  if (mode === 'chat' && !hasSentChatInit.value) {
+    chatMessages.value.push({
+      sender: 'ai',
+      text: '这是普通聊天模式，随便跟我说说什么吧。'
+    })
+    hasSentChatInit.value = true
+  } else if (mode === 'plan' && !hasSentPlanInit.value) {
+    planMessages.value.push({
+      sender: 'ai',
+      text: '在这里输入你想要的调度方案的修改，我会给你直接生成新的调度方案，你可以选择采纳或者不采纳。'
+    })
+    hasSentPlanInit.value = true
+  }
+}
+
+watch(currentMode, (newMode) => {
+  sendInitMessage(newMode)
+})
+
+onMounted(() => {
+  sendInitMessage(currentMode.value)
+})
+
 </script>
 
 
@@ -102,21 +174,44 @@ const logout = async () => {
     <div class="chat-container">
       <div class="chat-header">
         <div class="chat-title">DeepSeek 对话助手</div>
+        <div class="mode-switch">
+          <button
+            :class="{ active: currentMode === 'chat' }"
+            @click="currentMode = 'chat'"
+          >
+            对话聊天
+          </button>
+          <button
+            :class="{ active: currentMode === 'plan' }"
+            @click="currentMode = 'plan'"
+          >
+            生成方案
+          </button>
+        </div>
         <div class="chat-status">
           <i class="fas fa-circle"></i> 已连接
         </div>
       </div>
-      <div class="chat-messages" ref="chatMessages">
-        <div v-for="(msg, index) in messages" :key="index" :class="['message', msg.sender + '-message']">
+
+      <div class="chat-messages" ref="chatMessagesEl">
+        <div
+          v-for="(msg, index) in messages"
+          :key="index"
+          :class="['message', msg.sender + '-message']"
+        >
           <div class="message-header">
             <div class="message-icon">
               <i :class="msg.sender === 'user' ? 'fas fa-user' : 'fas fa-robot'"></i>
             </div>
-            <div>{{ msg.sender === 'user' ? '管理员' : 'DeepSeek 助手' }}</div>
+            <div class="message-name">
+              {{ msg.sender === 'user' ? '管理员' : 'DeepSeek 助手' }}
+              <span v-if="msg.loading" class="spinner-small"></span>
+            </div>
           </div>
           <div class="message-bubble" v-html="formatText(msg.text)"></div>
         </div>
       </div>
+
       <div class="chat-input-container">
         <div class="chat-input-box">
           <textarea
@@ -124,15 +219,23 @@ const logout = async () => {
             class="chat-input"
             placeholder="输入消息..."
             @keydown.enter="handleKeyDown"
-          />
+          ></textarea>
           <button class="send-button" @click="sendMessage">
             <i class="fas fa-paper-plane"></i>
           </button>
         </div>
       </div>
+
+      <!-- 加载弹窗
+      <div v-if="isLoading" class="modal-loading">
+        <div class="spinner"></div>
+        <p>正在深度思考中，请稍候...</p>
+      </div> -->
+
     </div>
   </div>
 </template>
+
 
 <style scoped>
 .app-container {
@@ -190,6 +293,28 @@ const logout = async () => {
 .fixed-date, .fixed-time {
   font-weight: 500;
   margin-left: 4px;
+}
+
+.mode-switch {
+  display: flex;
+  border: 1px solid #007bff;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.mode-switch button {
+  padding: 4px 12px;
+  font-size: 12px;
+  background: transparent;
+  color: #007bff;
+  border: none;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.mode-switch button.active {
+  background: #007bff;
+  color: #fff;
 }
 
 .chat-container {
@@ -304,8 +429,8 @@ const logout = async () => {
 
 .chat-input-container {
   border-top: 1px solid #e2e8f0;
-  background: white;
-  padding: 10px 20px;
+  background: rgb(255, 255, 255);
+  padding: 20px 150px;
 }
 
 .chat-input-box {
@@ -314,7 +439,7 @@ const logout = async () => {
 
 .chat-input {
   flex: 1;
-  border: 1px solid #cbd5e1;
+  border: 1px solid #e2e8f0;
   border-radius: 8px;
   padding: 8px;
   resize: none;
@@ -331,4 +456,44 @@ const logout = async () => {
   border-radius: 8px;
   cursor: pointer;
 }
+.modal-loading {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  color: white;
+  font-size: 20px;
+  z-index: 9999;
+}
+.spinner {
+  border: 5px solid rgba(255,255,255,0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  animation: spin 1s linear infinite;
+  margin-bottom: 16px;
+}
+.spinner-small {
+  display: inline-block;
+  margin-left: 6px;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(0,0,0,0.2);
+  border-top-color: #1d4ed8;  /* 深蓝 */
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  vertical-align: middle;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.message-name {
+  display: flex;
+  align-items: center;
+}
+
 </style>
