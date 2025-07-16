@@ -64,16 +64,21 @@ export async function getStationAssign(params = {}) {
   }
 }
 
-// src/api.js
-export async function postSuggestion(message) {
+export async function postSuggestion(target_time,message) {
+  const account = sessionStorage.getItem('account') 
+  const token = sessionStorage.getItem('token')
+  console.log('即将使用的 token：', token)
   try {
-    const res = await fetch('/suggestions', {
+    const res = await fetch('http://localhost:3000/suggestions', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message })
+      headers: {
+        'Content-Type': 'application/json',
+        account: account,   // 'admin' 也可以直接写死
+        token: token
+      },
+      body: JSON.stringify({ target_time,message })
     })
 
-    // 确认响应成功
     if (!res.ok) {
       console.error('请求失败：HTTP 状态码', res.status)
       return null
@@ -81,17 +86,59 @@ export async function postSuggestion(message) {
 
     const data = await res.json()
     console.log('后端返回数据：', data)
-
     if (!data || typeof data !== 'object' || !data.suggestion) {
       console.error('接口返回格式不符合预期：', data)
       return null
     }
-
     return data.suggestion
   } catch (error) {
     console.error('请求出错', error)
     return null
   }
 }
+
+export async function postDispatchPlan(target_time, user_guidance) {
+  const account = sessionStorage.getItem('account')
+  const token = sessionStorage.getItem('token')
+  console.log('即将使用的 token：', token)
+
+  try {
+    const res = await fetch('http://localhost:3000/suggestions/dispatch', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        account: account,
+        token: token
+      },
+      body: JSON.stringify({ target_time, user_guidance })
+    })
+
+    if (!res.ok) {
+      console.error('请求失败：HTTP 状态码', res.status)
+      return `请求失败：HTTP 状态码 ${res.status}`
+    }
+
+    const data = await res.json()
+    console.log('后端返回数据：', data)
+
+    if (!data || typeof data !== 'object' || !Array.isArray(data.optimized_plan)) {
+      console.error('接口返回格式不符合预期：', data)
+      return '后端返回格式不符合预期'
+    }
+
+    // 格式化可读文本
+    let result = `调度时间：${data.schedule_time}\n`
+    data.optimized_plan.forEach(item => {
+      result += `从站点 ${item.from_station_id} 调 ${item.bikes_to_move} 辆车到 ${item.to_station_id}。\n理由：${item.reason}\n\n`
+    })
+
+    return result.trim()
+  } catch (error) {
+    console.error('请求出错', error)
+    return '请求出错，请稍后再试'
+  }
+}
+
+
 
 export default request
