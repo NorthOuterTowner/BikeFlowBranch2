@@ -553,8 +553,6 @@ function animateArrow(event) {
         return;
       }
       arrow.setStyle(style);
-      // vectorContext.setStyle(style);
-      // vectorContext.drawGeometry(arrow.getGeometry());
     } catch (e) {
       console.error(`❌ 渲染 arrow[${idx}] 出错:`, e);
     }
@@ -712,7 +710,6 @@ async function fetchDispatch() {
   }
 }
 
-
 // ==================== 根据状态过滤 ====================
 // 计算属性，映射状态文字并过滤
 const filteredDispatchList = computed(() => {
@@ -757,6 +754,18 @@ async function handleStart(item) {
     item.status = mapStatus(item.statusInt)
   } catch (e) {
     console.error('执行调度失败', e)
+  }
+}
+
+async function handleReject(item) {
+  try {
+    await rejectDispatch({
+      dispatchId: item.schedule_id
+    })
+    item.statusInt = "已拒绝"
+    item.status = mapStatus(item.statusInt)
+  } catch (e) {
+    console.error('拒绝调度失败', e)
   }
 }
 
@@ -903,6 +912,7 @@ function focusStationOnMap(station) {
             <td class="col-number">{{ item.bikes_to_move ?? '-' }}</td>
             <td class="col-action">
               <button v-if="item.statusInt === '待执行'" @click.stop="handleStart(item)">采用</button>
+              <button v-if="item.statusInt === '待执行'" @click.stop="handleReject(item)">拒绝</button>
               <button v-if="item.statusInt === '正在执行'" @click.stop="handleCancel(item)">撤销</button>
             </td>
             <td class="col-nav">
