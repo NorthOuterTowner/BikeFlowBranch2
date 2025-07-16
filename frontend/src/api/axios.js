@@ -48,6 +48,10 @@ export function cancelDispatch(data) {
   return request.post('/dispatch/cancelChange', data)
 }
 
+export function rejectDispatch(data) {
+  return request.post('/dispatch/reject', {id: data.dispatchId})
+}
+
 export async function getStationAssign(params = {}) {
   try {
     const res = await request.get('/search/stationAssign', { params });
