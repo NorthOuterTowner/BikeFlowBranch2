@@ -10,13 +10,17 @@ const router = useRouter()
 const welcoming = ref('管理员，欢迎您！')
 const fixedDate = computed(() => new Date().toLocaleDateString())
 const currentHour = computed(() => new Date().getHours() + ':00')
-const target_time = new Date().toISOString()  // 直接新建一个 ISO 时间字符串
+const target_time = new Date('2025-06-13T09:35:00Z').toISOString();
+  // 直接新建一个 ISO 时间字符串
 
 // 当前模式：'chat' 或 'plan'
 const currentMode = ref('chat')
 
 // 聊天消息容器 DOM 元素
 const chatMessagesEl = ref(null)
+
+const isLoading = ref(false)
+//const answer = ref(null)
 
 // 两组对话
 const chatMessages = ref([])
@@ -33,9 +37,6 @@ const newMessage = ref('')
 const messages = computed(() => {
   return currentMode.value === 'chat' ? chatMessages.value : planMessages.value
 })
-
-// // 聊天消息容器
-// const chatMessages = ref(null)
 
 const handleKeyDown = (e) => {
   if (e.shiftKey) {
@@ -62,7 +63,7 @@ const scrollToBottom = () => {
   })
 }
 
-const sendMessage = async () => {
+async function sendMessage() {
   const text = newMessage.value.trim()
   if (!text) return
 
@@ -71,37 +72,44 @@ const sendMessage = async () => {
     text
   }
 
-  // 不要对 computed 的 targetMessages.value push
-  if (currentMode.value === 'chat') {
-    chatMessages.value.push(msg)
-  } else {
-    planMessages.value.push(msg)
-  }
+  // 选择对应消息列表
+  const messagesList = currentMode.value === 'chat' ? chatMessages.value : planMessages.value
 
+  messagesList.push(msg)
   newMessage.value = ''
+
+  // 加入 loading 占位消息
+  const loadingMsg = { sender: 'ai', text: '正在深度思考中，请稍候...', loading: true }
+  messagesList.push(loadingMsg)
+
   try {
     let reply
     if (currentMode.value === 'chat') {
-      reply = await postSuggestion(target_time,text)  // 普通对话
+      reply = await postSuggestion(target_time, text)
     } else {
-      reply = await postDispatchPlan(target_time,text)  // 生成方案
+      reply = await postDispatchPlan(target_time, text)
     }
-    if (currentMode.value === 'chat') {
-      chatMessages.value.push({ sender: 'ai', text: reply })
-    } else {
-      planMessages.value.push({ sender: 'ai', text: reply })
+    // 找到 loadingMsg 替换为真正回复
+    const idx = messagesList.indexOf(loadingMsg)
+    if (idx !== -1) {
+      messagesList[idx] = { sender: 'ai', text: reply }
     }
-    nextTick(() => scrollToBottom())
   } catch (error) {
-    targetMessages.value.push({ sender: 'ai', text: '出错了，请稍后再试' })
-    if (currentMode.value === 'chat') {
-      chatMessages.value.push({ sender: 'ai', text: errMsg })
-    } else {
-      planMessages.value.push({ sender: 'ai', text: errMsg })
+    const errMsg = '出错了，请稍后再试'
+    const idx = messagesList.indexOf(loadingMsg)
+    if (idx !== -1) {
+      messagesList[idx] = { sender: 'ai', text: errMsg }
     }
   }
-  nextTick(() => scrollToBottom())
+
+  nextTick(() => {
+    if (chatMessagesEl.value) {
+      chatMessagesEl.value.scrollTop = chatMessagesEl.value.scrollHeight
+    }
+    scrollToBottom()
+  })
 }
+
 
 // 退出
 const logout = async () => {
@@ -185,7 +193,7 @@ onMounted(() => {
         </div>
       </div>
 
-      <div class="chat-messages" ref="El">
+      <div class="chat-messages" ref="chatMessagesEl">
         <div
           v-for="(msg, index) in messages"
           :key="index"
@@ -195,7 +203,10 @@ onMounted(() => {
             <div class="message-icon">
               <i :class="msg.sender === 'user' ? 'fas fa-user' : 'fas fa-robot'"></i>
             </div>
-            <div>{{ msg.sender === 'user' ? '管理员' : 'DeepSeek 助手' }}</div>
+            <div class="message-name">
+              {{ msg.sender === 'user' ? '管理员' : 'DeepSeek 助手' }}
+              <span v-if="msg.loading" class="spinner-small"></span>
+            </div>
           </div>
           <div class="message-bubble" v-html="formatText(msg.text)"></div>
         </div>
@@ -208,12 +219,19 @@ onMounted(() => {
             class="chat-input"
             placeholder="输入消息..."
             @keydown.enter="handleKeyDown"
-          />
+          ></textarea>
           <button class="send-button" @click="sendMessage">
             <i class="fas fa-paper-plane"></i>
           </button>
         </div>
       </div>
+
+      <!-- 加载弹窗
+      <div v-if="isLoading" class="modal-loading">
+        <div class="spinner"></div>
+        <p>正在深度思考中，请稍候...</p>
+      </div> -->
+
     </div>
   </div>
 </template>
@@ -438,4 +456,44 @@ onMounted(() => {
   border-radius: 8px;
   cursor: pointer;
 }
+.modal-loading {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  color: white;
+  font-size: 20px;
+  z-index: 9999;
+}
+.spinner {
+  border: 5px solid rgba(255,255,255,0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  animation: spin 1s linear infinite;
+  margin-bottom: 16px;
+}
+.spinner-small {
+  display: inline-block;
+  margin-left: 6px;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(0,0,0,0.2);
+  border-top-color: #1d4ed8;  /* 深蓝 */
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  vertical-align: middle;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.message-name {
+  display: flex;
+  align-items: center;
+}
+
 </style>
