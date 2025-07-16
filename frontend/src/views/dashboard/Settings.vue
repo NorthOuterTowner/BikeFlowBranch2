@@ -13,41 +13,86 @@
     <!-- 主内容区域 -->
     <div class="main-content">
       <div class="settings-container">
-        <!-- 系统设置标题 -->
-        <div class="settings-header">
-          <h1>系统设置</h1>
-          <p class="settings-subtitle">管理您的系统配置和参数</p>
+        <!-- 设置卡片 -->
+        <div class="settings-card">
+          <div class="card-header">
+            <div class="card-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" fill="currentColor"/>
+              </svg>
+            </div>
+            <div class="card-title">
+              <h3>日期时间设置</h3>
+            </div>
+          </div>
+
+          <div class="card-content">
+            <div class="form-group">
+              <label for="date-input" class="form-label">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M19 3H18V1H16V3H8V1H6V3H5C3.89 3 3 3.89 3 5V19C3 20.1 3.89 21 5 21H19C20.1 21 21 20.1 21 19V5C21 3.89 20.1 3 19 3ZM19 19H5V8H19V19Z" fill="currentColor"/>
+                </svg>
+                当前日期
+              </label>
+              <input 
+                id="date-input" 
+                type="date" 
+                v-model="selectedDate" 
+                class="form-input"
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="hour-select" class="form-label">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67V7z" fill="currentColor"/>
+                </svg>
+                当前时间
+              </label>
+              <select id="hour-select" v-model="selectedHour" class="form-select">
+                <option v-for="h in 24" :key="h" :value="(h < 10 ? '0' + h : h) + ':00'">
+                  {{ (h < 10 ? '0' + h : h) + ':00' }}
+                </option>
+              </select>
+            </div>
+
+            <div class="form-actions">
+              <button class="save-button" @click="saveDateTime">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M17 3H7C5.89 3 5 3.89 5 5V19C5 20.1 5.89 21 7 21H17C18.1 21 19 20.1 19 19V5C19 3.89 18.1 3 17 3ZM17 19H7V5H10V9H14V5H17V19Z" fill="currentColor"/>
+                </svg>
+                保存设置
+              </button>
+            </div>
+
+            <!-- 内联成功提示 -->
+            <Transition name="toast">
+              <div v-if="showInlineSuccess" class="success-toast">
+                <div class="toast-icon">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z" fill="currentColor"/>
+                  </svg>
+                </div>
+                <div class="toast-message">{{ inlineSuccessMessage }}</div>
+              </div>
+            </Transition>
+          </div>
         </div>
 
-        <!-- 设置内容 -->
-        <div class="settings-content">
-          <div class="settings-section">
-            <div class="date-setting-container">
-              <h3>日期设置</h3>
-              <div class="date-setting">
-                  <label for="date-input">当前日期：</label>
-                  <input id="date-input" type="date" v-model="selectedDate" />
-
-                  <label for="hour-select">当前时间：</label>
-                  <select id="hour-select" v-model="selectedHour">
-                    <option v-for="h in 24" :key="h" :value="(h < 10 ? '0' + h : h) + ':00'">
-                      {{ (h < 10 ? '0' + h : h) + ':00' }}
-                    </option>
-                  </select>
-
-                  <button class="save-date-button" @click="saveDateTime">保存</button>
-
-                <!-- 内联成功提示 -->
-                <div v-if="showInlineSuccess" class="inline-success-toast">
-                  <div class="inline-toast-icon">✓</div>
-                  <div class="inline-toast-message">{{ inlineSuccessMessage }}</div>
-                </div>
-              </div>
-              <div class="current-date-display">
-                <p>已设置日期时间：{{ displayDate }} {{ displayHour }}</p>
-              </div>
+        <!-- 当前设置显示 -->
+        <div class="status-card">
+          <div class="status-header">
+            <h4>当前设置</h4>
+          </div>
+          <div class="status-content">
+            <div class="status-item">
+              <span class="status-label">日期：</span>
+              <span class="status-value">{{ displayDate }}</span>
             </div>
-            
+            <div class="status-item">
+              <span class="status-label">时间：</span>
+              <span class="status-value">{{ displayHour }}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -67,7 +112,6 @@ const inlineSuccessMessage = ref('')
 const logout = async () => {
   const confirmed = window.confirm('确定要退出登录吗？')
   if (!confirmed) {
-    // 用户取消退出
     return
   }
 
@@ -80,7 +124,6 @@ const logout = async () => {
     router.push('/login')
   }
 }
-
 
 // 读取 localStorage 中的日期，若无则使用今天
 const today = new Date().toISOString().split('T')[0]
@@ -112,14 +155,7 @@ const showInlineToast = (message) => {
   }, 3000)
 }
 
-const saveDate = () => {
-  localStorage.setItem('selectedDate', selectedDate.value)
-  const formattedDate = new Date(selectedDate.value).toLocaleDateString('zh-CN')
-  showInlineToast(`日期已保存为：${formattedDate}`)
-}
-
 onMounted(() => {
-  // 组件加载时确保 selectedDate 是最新的
   selectedDate.value = localStorage.getItem('selectedDate') || today
 })
 </script>
@@ -127,11 +163,22 @@ onMounted(() => {
 <style scoped>
 .settings-page {
   min-height: 100vh;
-  background-color: #f8f9fa;
+  background: linear-gradient(135deg, #4953c2 0%, #0f1a87 100%);
   display: flex;
   flex-direction: column;
+  position: relative;
 }
 
+.settings-page::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.1'%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E") repeat;
+  pointer-events: none;
+}
 /* Header 样式 */
 .header {
   display: flex;
@@ -187,194 +234,259 @@ onMounted(() => {
   justify-content: center;
   align-items: flex-start;
   padding: 40px 20px;
+  position: relative;
+  z-index: 1;
 }
 
 .settings-container {
-  background-color: #fff;
-  border-radius: 12px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  padding: 40px;
   max-width: 800px;
   width: 100%;
-}
-
-.settings-header {
-  text-align: center;
-  margin-bottom: 40px;
-  border-bottom: 2px solid #e9ecef;
-  padding-bottom: 20px;
-}
-
-.settings-header h1 {
-  font-size: 28px;
-  color: #091275;
-  margin: 0 0 10px 0;
-  font-weight: 600;
-}
-
-.settings-subtitle {
-  font-size: 16px;
-  color: #6c757d;
-  margin: 0;
-}
-
-.settings-content {
   display: flex;
   flex-direction: column;
-  gap: 30px;
+  gap: 24px;
 }
 
-/* 日期设置样式 */
-.date-setting-container {
-  padding: 25px;
-  background-color: #fff;
+/* 设置卡片 */
+.settings-card {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  border-radius: 20px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-.date-setting-container h3 {
-  margin: 0 0 20px 0;
-  color: #091275;
-  font-size: 18px;
-  font-weight: 600;
-}
-
-.date-setting {
+.card-header {
   display: flex;
   align-items: center;
-  gap: 15px;
-  margin-bottom: 20px;
-  flex-wrap: wrap;
-}
-
-.date-setting label {
-  font-weight: 600;
-  min-width: 80px;
-  color: #495057;
-}
-
-.date-setting input[type="date"] {
-  padding: 10px;
-  border: 1px solid #ced4da;
-  border-radius: 4px;
-  font-size: 14px;
-  transition: border-color 0.2s;
-}
-
-.date-setting input[type="date"]:focus {
-  outline: none;
-  border-color: #091275;
-  box-shadow: 0 0 0 2px rgba(9, 18, 117, 0.2);
-}
-
-.save-date-button {
-  padding: 10px 20px;
-  background-color: #091275;
+  gap: 16px;
+  padding: 24px 32px;
+  background: linear-gradient(135deg, #f2f2f5 0%, #ebe8ed 100%);
   color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
+}
+
+.card-icon {
+  width: 48px;
+  height: 48px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(10px);
+}
+
+.card-title h3 {
+  margin: 0 0 4px 0;
+  font-size: 20px;
   font-weight: 600;
-  transition: background-color 0.2s;
+  color:black;
 }
 
-.save-date-button:hover {
-  background-color: #0d1c9e;
+.card-content {
+  padding: 32px;
 }
 
-/* 内联成功提示样式 */
-.inline-success-toast {
+/* 表单样式 */
+.form-group {
+  margin-bottom: 24px;
+}
+
+.form-label {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
-  background-color: #d4edda;
-  border: 1px solid #c3e6cb;
-  border-radius: 4px;
-  color: #155724;
-  font-size: 14px;
-  animation: fadeInScale 0.3s ease-out;
-  white-space: nowrap;
-}
-
-.inline-toast-icon {
-  font-size: 14px;
-  font-weight: bold;
-  color: #28a745;
-}
-
-.inline-toast-message {
-  font-size: 13px;
-  font-weight: 500;
-}
-
-@keyframes fadeInScale {
-  from {
-    opacity: 0;
-    transform: scale(0.9);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-.current-date-display {
-  padding: 15px;
-  background-color: #f8f9fa;
-  border-radius: 6px;
-  border-left: 4px solid #091275;
-}
-
-.current-date-display p {
-  margin: 0;
-  font-size: 14px;
-  color: #495057;
-  font-weight: 500;
-}
-
-/* 占位符区域 */
-.placeholder-section {
-  padding: 25px;
-  background-color: #f8f9fa;
-  text-align: center;
-}
-
-.placeholder-section h3 {
-  margin: 0 0 15px 0;
-  color: #091275;
-  font-size: 18px;
   font-weight: 600;
+  color: #2d3748;
+  margin-bottom: 8px;
+  font-size: 14px;
 }
 
-.placeholder-section p {
+.form-input, .form-select {
+  width: 100%;
+  padding: 12px 16px;
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  font-size: 14px;
+  transition: all 0.3s ease;
+  background: white;
+  color: #2d3748;
+}
+
+.form-input:focus, .form-select:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  transform: translateY(-1px);
+}
+
+.form-select {
+  cursor: pointer;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 32px;
+}
+
+.save-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #4953c2 0%, #0f1a87 100%);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);
+}
+
+.save-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(102, 126, 234, 0.4);
+}
+
+/* 成功提示 */
+.success-toast {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+  color: white;
+  border-radius: 12px;
+  margin-top: 16px;
+  box-shadow: 0 4px 20px rgba(72, 187, 120, 0.3);
+}
+
+.toast-icon {
+  width: 20px;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.toast-message {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* 状态卡片 */
+.status-card {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  border-radius: 20px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 24px;
+}
+
+.status-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.status-header h4 {
   margin: 0;
-  color: #6c757d;
-  font-style: italic;
+  font-size: 16px;
+  font-weight: 600;
+  color: #2d3748;
+}
+
+
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.5; }
+  100% { opacity: 1; }
+}
+
+.status-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.status-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.status-item:last-child {
+  border-bottom: none;
+}
+
+.status-label {
+  font-weight: 500;
+  color: #4a5568;
+  font-size: 14px;
+}
+
+.status-value {
+  font-weight: 600;
+  color: #2d3748;
+  font-size: 14px;
+}
+
+/* 动画 */
+.toast-enter-active, .toast-leave-active {
+  transition: all 0.3s ease;
+}
+
+.toast-enter-from {
+  opacity: 0;
+  transform: translateY(-10px) scale(0.95);
+}
+
+.toast-leave-to {
+  opacity: 0;
+  transform: translateY(-10px) scale(0.95);
 }
 
 /* 响应式设计 */
 @media (max-width: 768px) {
-  .settings-container {
-    padding: 20px;
-    margin: 0 10px;
-  }
-  
-  .date-setting {
+  .header-content {
+    padding: 16px 20px;
     flex-direction: column;
-    align-items: flex-start;
+    gap: 16px;
   }
   
-  .date-setting label {
-    min-width: auto;
+  .main-content {
+    padding: 20px 16px;
   }
   
-  .settings-header h1 {
-    font-size: 24px;
+  .card-content {
+    padding: 24px 20px;
   }
   
-  .inline-success-toast {
-    white-space: normal;
-    text-align: center;
+  .card-header {
+    padding: 20px;
+  }
+  
+  .settings-container {
+    gap: 16px;
+  }
+  
+  .form-actions {
+    justify-content: center;
+  }
+  
+  .save-button {
+    width: 100%;
+    justify-content: center;
   }
 }
 </style>
