@@ -27,8 +27,8 @@ const emit = defineEmits(['update:show'])
 
 // 状态
 const loading = ref(false)
-const actualBikeNum = ref(0)
-const dispatchData = ref(null)
+const inboundData = ref(null)
+const outboundData = ref(null)
 const error = ref('')
 
 // 计算属性
@@ -38,51 +38,96 @@ const formattedDateTime = computed(() => {
   return `${props.date}T${hourOnly.padStart(2, '0')}:00:00Z`
 })
 
+// 计算调入任务（站点作为终点）
+const inboundSchedules = computed(() => {
+  return inboundData.value?.schedules || []
+})
 
-// 获取实际单车数量
-async function fetchActualBikeNum() {
-  if (!props.station?.station_id || !props.date || !props.hour) return
-  
-  try {
-    const response = await request.get('/stations/bikeNum', {
-      params: {
-        station_id: props.station.station_id,
-        date: props.date,
-        hour: props.hour
-      }
-    })
-    
-    if (response.data && typeof response.data.bikeNum === 'number') {
-      actualBikeNum.value = response.data.bikeNum
-    } else if (typeof response.data === 'number') {
-      actualBikeNum.value = response.data
-    } else {
-      actualBikeNum.value = 0
-    }
-  } catch (err) {
-    console.error('获取实际单车数量失败:', err)
-    actualBikeNum.value = 0
+// 计算调出任务（站点作为起点）
+const outboundSchedules = computed(() => {
+  return outboundData.value?.schedules || []
+})
+
+// 工具函数
+function getStatusColor(status) {
+  const statusColors = {
+    // 中文状态值映射
+    '待执行': '#f59e0b',     // 待执行 - 橙色
+    '正在执行': '#3b82f6',     // 执行中 - 蓝色
+    '已完成': '#10b981',     // 已完成 - 绿色
+    '已取消': '#ef4444',     // 已取消 - 红色
+    // 英文状态值映射（兼容）
+    'pending': '#f59e0b',
+    'in_progress': '#3b82f6',
+    'completed': '#10b981',
+    'cancelled': '#ef4444',
   }
+  return statusColors[status] || '#6b7280' // 默认灰色
 }
-async function fetchDispatchData() {
+
+function getStatusText(status) {
+  // 如果已经是中文状态，直接返回
+  const chineseStatuses = ['待执行', '正在执行', '已完成', '已取消']
+  if (chineseStatuses.includes(status)) {
+    return status
+  }
+  
+  // 英文状态转中文
+  const statusTexts = {
+    'pending': '待执行',
+    'in_progress': '正在执行',
+    'completed': '已完成',
+    'cancelled': '已取消',
+  }
+  return statusTexts[status] || status
+}
+
+function formatDateTime(dateTime) {
+  if (!dateTime) return ''
+  return new Date(dateTime).toLocaleString('zh-CN')
+}
+
+// 获取调入数据（站点作为终点）
+async function fetchInboundData() {
   if (!props.station?.station_id || !formattedDateTime.value) return
   
   try {
     const response = await request.get('/dispatch/by-station', {
       params: {
         station_id: props.station.station_id,
-        query_time: formattedDateTime.value
+        query_time: formattedDateTime.value,
+        role: 'end'  // 站点作为终点，即调入任务
       }
     })
     
-    dispatchData.value = response.data
+    inboundData.value = response.data
   } catch (err) {
-    console.error('获取调度数据失败:', err)
-    dispatchData.value = null
+    console.error('获取调入数据失败:', err)
+    inboundData.value = null
   }
 }
 
-// 加载所有数据
+// 获取调出数据（站点作为起点）
+async function fetchOutboundData() {
+  if (!props.station?.station_id || !formattedDateTime.value) return
+  
+  try {
+    const response = await request.get('/dispatch/by-station', {
+      params: {
+        station_id: props.station.station_id,
+        query_time: formattedDateTime.value,
+        role: 'start'  // 站点作为起点，即调出任务
+      }
+    })
+    
+    outboundData.value = response.data
+  } catch (err) {
+    console.error('获取调出数据失败:', err)
+    outboundData.value = null
+  }
+}
+
+// 加载数据
 async function loadStationData() {
   if (!props.station) return
   
@@ -90,9 +135,10 @@ async function loadStationData() {
   error.value = ''
   
   try {
+    // 并行请求调入和调出数据
     await Promise.all([
-      fetchActualBikeNum(),
-      fetchDispatchData()
+      fetchInboundData(),
+      fetchOutboundData()
     ])
   } catch (err) {
     console.error('加载站点数据失败:', err)
@@ -122,6 +168,7 @@ watch([() => props.date, () => props.hour], () => {
 })
 </script>
 
+
 <template>
   <Transition name="dialog-fade">
     <div v-if="show" class="dialog-overlay" @click="closeDialog">
@@ -132,14 +179,14 @@ watch([() => props.date, () => props.hour], () => {
             <div class="header-info">
               <div class="station-icon">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-                  <path d="M2 17l10 5 10-5"/>
-                  <path d="M2 12l10 5 10-5"/>
+                  <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                  <polyline points="9,22 9,12 15,12 15,22"/>
                 </svg>
               </div>
               <div>
-                <h3 class="dialog-title">站点详细信息</h3>
+                <h3 class="dialog-title">调度信息</h3>
                 <p class="station-subtitle">{{ station?.station_name || '未知站点' }}</p>
+                <p class="time-subtitle">{{ date }} {{ hour }}:00</p>
               </div>
             </div>
             <button class="close-button" @click="closeDialog">
@@ -177,279 +224,153 @@ watch([() => props.date, () => props.hour], () => {
               </button>
             </div>
             
-            <div v-else-if="station" class="station-info">
-              <!-- 基本信息 -->
-              <div class="info-section">
-                <div class="section-header">
-                  <div class="section-icon">
+            <div v-else class="dispatch-content">
+              <!-- 调度统计概览 -->
+              <div class="dispatch-overview">
+                <div class="overview-item">
+                  <div class="overview-icon total-icon">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M3 3h18v18H3zM9 9h6v6H9z"/>
+                      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                      <circle cx="9" cy="7" r="4"/>
+                      <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+                      <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
                     </svg>
                   </div>
-                  <h4 class="section-title">基本信息</h4>
-                </div>
-                <div class="info-grid">
-                  <div class="info-item">
-                    <div class="info-label">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2z"/>
-                        <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                      </svg>
-                      站点编号
-                    </div>
-                    <span class="info-value">{{ station.station_id }}</span>
-                  </div>
-                  <div class="info-item">
-                    <div class="info-label">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
-                        <circle cx="12" cy="10" r="3"/>
-                      </svg>
-                      站点名称
-                    </div>
-                    <span class="info-value">{{ station.station_name || '未知' }}</span>
-                  </div>
-                  <div class="info-item">
-                    <div class="info-label">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="10"/>
-                        <line x1="12" y1="8" x2="12" y2="12"/>
-                        <line x1="12" y1="16" x2="12.01" y2="16"/>
-                      </svg>
-                      纬度
-                    </div>
-                    <span class="info-value">{{ station.latitude?.toFixed(4) }}</span>
-                  </div>
-                  <div class="info-item">
-                    <div class="info-label">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="10"/>
-                        <line x1="12" y1="8" x2="12" y2="12"/>
-                        <line x1="12" y1="16" x2="12.01" y2="16"/>
-                      </svg>
-                      经度
-                    </div>
-                    <span class="info-value">{{ station.longitude?.toFixed(4) }}</span>
-                  </div>
-                </div>
-              </div>
-              
-              <!-- 时间信息 -->
-              <div class="info-section">
-                <div class="section-header">
-                  <div class="section-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <circle cx="12" cy="12" r="10"/>
-                      <polyline points="12,6 12,12 16,14"/>
-                    </svg>
-                  </div>
-                  <h4 class="section-title">查询时间</h4>
-                </div>
-                <div class="time-display">
-                  <div class="time-item">
-                    <div class="time-label">日期</div>
-                    <div class="time-value">{{ date }}</div>
-                  </div>
-                  <div class="time-divider">|</div>
-                  <div class="time-item">
-                    <div class="time-label">时间</div>
-                    <div class="time-value">{{ hour }}:00</div>
-                  </div>
-                </div>
-              </div>
-              
-              <!-- 数据对比卡片 -->
-              <div class="data-comparison">
-                <div class="data-card actual-card">
-                  <div class="card-header">
-                    <div class="card-icon actual-icon">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M9 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2z"/>
-                        <path d="M19 7h-4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/>
-                      </svg>
-                    </div>
-                    <div class="card-title">实际数据</div>
-                  </div>
-                  <div class="card-value actual-value">{{ actualBikeNum }}</div>
-                  <div class="card-label">实际单车数量</div>
-                </div>
-              </div>
-              <!-- 数据对比卡片结束 -->
-
-              <!-- 调度信息 -->
-              <div class="info-section">
-                <div class="section-header">
-                  <div class="section-icon dispatch-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-                      <polyline points="9,22 9,12 15,12 15,22"/>
-                    </svg>
-                  </div>
-                  <h4 class="section-title">调度信息</h4>
-                </div>
-
-                <div v-if="dispatchData && dispatchData.schedules && dispatchData.schedules.length > 0" class="dispatch-content">
-                  <!-- 调度统计 -->
-                  <div class="dispatch-stats">
-                    <div class="stat-item">
-                      <div class="stat-icon total-icon">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
-                          <circle cx="9" cy="7" r="4"/>
-                          <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
-                          <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-                        </svg>
-                      </div>
-                      <div class="stat-content">
-                        <div class="stat-value">{{ dispatchData.schedules.length }}</div>
-                        <div class="stat-label">总调度任务</div>
-                      </div>
-                    </div>
-                    
-                    <div class="stat-item">
-                      <div class="stat-icon in-icon">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-                          <polyline points="7.5,4.21 12,6.81 16.5,4.21"/>
-                          <polyline points="7.5,19.79 7.5,14.6 3,12"/>
-                          <polyline points="21,12 16.5,14.6 16.5,19.79"/>
-                        </svg>
-                      </div>
-                      <div class="stat-content">
-                        <div class="stat-value">{{ dispatchData.schedules.filter(s => s.end_station.id === station.station_id).length }}</div>
-                        <div class="stat-label">调入任务</div>
-                      </div>
-                    </div>
-                    
-                    <div class="stat-item">
-                      <div class="stat-icon out-icon">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-                          <polyline points="16,17 21,12 16,7"/>
-                          <line x1="21" y1="12" x2="9" y2="12"/>
-                        </svg>
-                      </div>
-                      <div class="stat-content">
-                        <div class="stat-value">{{ dispatchData.schedules.filter(s => s.start_station.id === station.station_id).length }}</div>
-                        <div class="stat-label">调出任务</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <!-- 调度任务列表 -->
-                  <div class="dispatch-list">
-                    <div v-for="schedule in dispatchData.schedules" :key="schedule.schedule_id" class="dispatch-item">
-                      <div class="dispatch-item-header">
-                        <div class="dispatch-type" :class="schedule.start_station.id === station.station_id ? 'outbound' : 'inbound'">
-                          <svg v-if="schedule.start_station.id === station.station_id" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-                            <polyline points="16,17 21,12 16,7"/>
-                            <line x1="21" y1="12" x2="9" y2="12"/>
-                          </svg>
-                          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
-                            <polyline points="8,7 3,12 8,17"/>
-                            <line x1="3" y1="12" x2="15" y2="12"/>
-                          </svg>
-                          {{ schedule.start_station.id === station.station_id ? '调出' : '调入' }}
-                        </div>
-                        <div class="dispatch-status" :style="{ backgroundColor: getStatusColor(schedule.status) }">
-                          {{ getStatusText(schedule.status) }}
-                        </div>
-                      </div>
-                      
-                      <div class="dispatch-item-body">
-                        <div class="dispatch-route">
-                          <div class="route-station start-station">
-                            <div class="station-marker">
-                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
-                                <circle cx="12" cy="10" r="3"/>
-                              </svg>
-                            </div>
-                            <div class="station-info">
-                              <div class="station-name">{{ schedule.start_station.name }}</div>
-                              <div class="station-id">{{ schedule.start_station.id }}</div>
-                            </div>
-                          </div>
-                          
-                          <div class="route-arrow">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                              <line x1="5" y1="12" x2="19" y2="12"/>
-                              <polyline points="12,5 19,12 12,19"/>
-                            </svg>
-                          </div>
-                          
-                          <div class="route-station end-station">
-                            <div class="station-marker">
-                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
-                                <circle cx="12" cy="10" r="3"/>
-                              </svg>
-                            </div>
-                            <div class="station-info">
-                              <div class="station-name">{{ schedule.end_station.name }}</div>
-                              <div class="station-id">{{ schedule.end_station.id }}</div>
-                            </div>
-                          </div>
-                        </div>
-                        
-                        <div class="dispatch-details">
-                          <div class="detail-item">
-                            <div class="detail-label">
-                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                                <polyline points="14,2 14,8 20,8"/>
-                                <line x1="16" y1="13" x2="8" y2="13"/>
-                                <line x1="16" y1="17" x2="8" y2="17"/>
-                                <polyline points="10,9 9,9 8,9"/>
-                              </svg>
-                              调度ID
-                            </div>
-                            <div class="detail-value">#{{ schedule.schedule_id }}</div>
-                          </div>
-                          
-                          <div class="detail-item">
-                            <div class="detail-label">
-                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                                <polyline points="14,2 14,8 20,8"/>
-                                <line x1="16" y1="13" x2="8" y2="13"/>
-                                <line x1="16" y1="17" x2="8" y2="17"/>
-                                <polyline points="10,9 9,9 8,9"/>
-                              </svg>
-                              调度数量
-                            </div>
-                            <div class="detail-value bikes-count">{{ schedule.bikes_to_move }} 辆</div>
-                          </div>
-                          
-                          <div class="detail-item">
-                            <div class="detail-label">
-                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <circle cx="12" cy="12" r="10"/>
-                                <polyline points="12,6 12,12 16,14"/>
-                              </svg>
-                              更新时间
-                            </div>
-                            <div class="detail-value">{{ new Date(schedule.updated_at).toLocaleString() }}</div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+                  <div class="overview-content">
+                    <div class="overview-value">{{ (inboundSchedules.length + outboundSchedules.length) }}</div>
+                    <div class="overview-label">总调度任务</div>
                   </div>
                 </div>
                 
-                <div v-else class="no-dispatch-data">
-                  <div class="no-data-icon">
+                <div class="overview-item">
+                  <div class="overview-icon in-icon">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-                      <polyline points="9,22 9,12 15,12 15,22"/>
+                      <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
+                      <polyline points="8,7 3,12 8,17"/>
+                      <line x1="3" y1="12" x2="15" y2="12"/>
                     </svg>
                   </div>
-                  <div class="no-data-text">暂无调度信息</div>
+                  <div class="overview-content">
+                    <div class="overview-value">{{ inboundSchedules.length }}</div>
+                    <div class="overview-label">调入任务</div>
+                  </div>
+                </div>
+                
+                <div class="overview-item">
+                  <div class="overview-icon out-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                      <polyline points="16,17 21,12 16,7"/>
+                      <line x1="21" y1="12" x2="9" y2="12"/>
+                    </svg>
+                  </div>
+                  <div class="overview-content">
+                    <div class="overview-value">{{ outboundSchedules.length }}</div>
+                    <div class="overview-label">调出任务</div>
+                  </div>
                 </div>
               </div>
-              <!-- 调度信息结束 -->
+
+              <!-- 调度表格区域 -->
+              <div v-if="inboundSchedules.length > 0 || outboundSchedules.length > 0" class="dispatch-tables">
+                <!-- 调入表格 -->
+                <div v-if="inboundSchedules.length > 0" class="dispatch-table-section">
+                  <div class="table-header inbound-header">
+                    <div class="table-icon">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
+                        <polyline points="8,7 3,12 8,17"/>
+                        <line x1="3" y1="12" x2="15" y2="12"/>
+                      </svg>
+                    </div>
+                    <h5 class="table-title">调入任务 ({{ inboundSchedules.length }})</h5>
+                  </div>
+                  <div class="table-container">
+                    <table class="dispatch-table">
+                      <thead>
+                        <tr>
+                          <th>调度ID</th>
+                          <th>来源站点</th>
+                          <th>调度数量</th>
+                          <th>状态</th>
+                          <th>更新时间</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr v-for="schedule in inboundSchedules" :key="schedule.schedule_id">
+                          <td class="schedule-id">#{{ schedule.schedule_id }}</td>
+                          <td class="station-info">
+                            <div class="station-name">{{ schedule.start_station.name }}</div>
+                            <div class="station-id">{{ schedule.start_station.id }}</div>
+                          </td>
+                          <td class="bikes-count">{{ schedule.bikes_to_move }} 辆</td>
+                          <td>
+                            <span class="status-badge" :style="{ backgroundColor: getStatusColor(schedule.status) }">
+                              {{ getStatusText(schedule.status) }}
+                            </span>
+                          </td>
+                          <td class="update-time">{{ formatDateTime(schedule.updated_at) }}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <!-- 调出表格 -->
+                <div v-if="outboundSchedules.length > 0" class="dispatch-table-section">
+                  <div class="table-header outbound-header">
+                    <div class="table-icon">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                        <polyline points="16,17 21,12 16,7"/>
+                        <line x1="21" y1="12" x2="9" y2="12"/>
+                      </svg>
+                    </div>
+                    <h5 class="table-title">调出任务 ({{ outboundSchedules.length }})</h5>
+                  </div>
+                  <div class="table-container">
+                    <table class="dispatch-table">
+                      <thead>
+                        <tr>
+                          <th>调度ID</th>
+                          <th>目标站点</th>
+                          <th>调度数量</th>
+                          <th>状态</th>
+                          <th>更新时间</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr v-for="schedule in outboundSchedules" :key="schedule.schedule_id">
+                          <td class="schedule-id">#{{ schedule.schedule_id }}</td>
+                          <td class="station-info">
+                            <div class="station-name">{{ schedule.end_station.name }}</div>
+                            <div class="station-id">{{ schedule.end_station.id }}</div>
+                          </td>
+                          <td class="bikes-count">{{ schedule.bikes_to_move }} 辆</td>
+                          <td>
+                            <span class="status-badge" :style="{ backgroundColor: getStatusColor(schedule.status) }">
+                              {{ getStatusText(schedule.status) }}
+                            </span>
+                          </td>
+                          <td class="update-time">{{ formatDateTime(schedule.updated_at) }}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- 无调度数据 -->
+              <div v-else class="no-dispatch-data">
+                <div class="no-data-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                    <polyline points="9,22 9,12 15,12 15,22"/>
+                  </svg>
+                </div>
+                <div class="no-data-text">暂无调度任务</div>
+                <div class="no-data-desc">该时间段内没有调入或调出任务</div>
+              </div>
             </div>
           </div>
         </div>
@@ -457,7 +378,6 @@ watch([() => props.date, () => props.hour], () => {
     </div>
   </Transition>
 </template>
-
 
 <style scoped>
 /* 过渡动画 */
@@ -503,7 +423,7 @@ watch([() => props.date, () => props.hour], () => {
   background: linear-gradient(135deg, #ffffff 0%, #f8fafc 30%, #e2e8f0 70%, #cbd5e1 100%);
   border-radius: 20px;
   width: 100%;
-  max-width: 700px;
+  max-width: 900px;
   max-height: 90vh;
   overflow-y: auto;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
@@ -521,7 +441,6 @@ watch([() => props.date, () => props.hour], () => {
   background: linear-gradient(135deg, #4953c2 0%, #0f1a87 100%);
   color: white;
   border-radius: 20px 20px 0 0;
-  
 }
 
 .header-info {
@@ -554,8 +473,14 @@ watch([() => props.date, () => props.hour], () => {
 
 .station-subtitle {
   font-size: 14px;
-  margin: 0;
+  margin: 0 0 4px 0;
   opacity: 0.9;
+}
+
+.time-subtitle {
+  font-size: 12px;
+  margin: 0;
+  opacity: 0.8;
 }
 
 .close-button {
@@ -679,137 +604,28 @@ watch([() => props.date, () => props.hour], () => {
   height: 16px;
 }
 
-/* 信息区块 */
-.info-section {
-  margin-bottom: 32px;
-}
-
-.section-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.section-icon {
-  width: 32px;
-  height: 32px;
-  background: linear-gradient(135deg, #4953c2 0%, #0f1a87 100%);
-  color: white;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.section-icon svg {
-  width: 16px;
-  height: 16px;
-}
-
-.section-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: #1e293b;
-  margin: 0;
-}
-
-/* 信息网格 */
-.info-grid {
+/* 调度概览 */
+.dispatch-overview {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 16px;
-}
-
-.info-item {
-  background: white;
-  padding: 20px;
-  border-radius: 12px;
-  border: 1px solid #e2e8f0;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  transition: all 0.2s ease;
-}
-
-.info-item:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
-}
-
-.info-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 500;
-  color: #64748b;
-}
-
-.info-label svg {
-  width: 16px;
-  height: 16px;
-}
-
-.info-value {
-  font-weight: 600;
-  color: #1e293b;
-}
-
-/* 时间显示 */
-.time-display {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 24px;
-  background: white;
-  padding: 24px;
-  border-radius: 12px;
-  border: 1px solid #e2e8f0;
-}
-
-.time-item {
-  text-align: center;
-}
-
-.time-label {
-  font-size: 12px;
-  color: #64748b;
-  font-weight: 500;
-  margin-bottom: 8px;
-}
-
-.time-value {
-  font-size: 20px;
-  font-weight: 700;
-  color: #1e293b;
-}
-
-.time-divider {
-  font-size: 20px;
-  color: #cbd5e1;
-  font-weight: 300;
-}
-
-/* 数据对比卡片 */
-.data-comparison {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 20px;
   margin-bottom: 32px;
 }
 
-.data-card {
+.overview-item {
   background: white;
-  padding: 28px;
+  padding: 24px;
   border-radius: 16px;
   border: 1px solid #e2e8f0;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  gap: 16px;
   transition: all 0.3s ease;
   position: relative;
   overflow: hidden;
 }
 
-.data-card::before {
+.overview-item::before {
   content: '';
   position: absolute;
   top: 0;
@@ -819,92 +635,12 @@ watch([() => props.date, () => props.hour], () => {
   background: linear-gradient(135deg, #4953c2 0%, #0f1a87 100%);
 }
 
-.data-card:hover {
+.overview-item:hover {
   transform: translateY(-4px);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.1);
 }
 
-.card-header {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  margin-bottom: 20px;
-}
-
-.card-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-}
-
-.actual-icon {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-}
-
-.predict-icon {
-  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
-}
-
-.card-icon svg {
-  width: 20px;
-  height: 20px;
-}
-
-.card-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: #1e293b;
-}
-
-.card-value {
-  font-size: 36px;
-  font-weight: 800;
-  margin-bottom: 8px;
-  background: linear-gradient(135deg, #4953c2 0%, #0f1a87 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.card-label {
-  font-size: 14px;
-  color: #64748b;
-  font-weight: 500;
-}
-
-/* 流量数据 */
-.flow-section {
-  margin-bottom: 32px;
-}
-
-.flow-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 20px;
-}
-
-.flow-item {
-  background: white;
-  padding: 24px;
-  border-radius: 12px;
-  border: 1px solid #e2e8f0;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  transition: all 0.2s ease;
-}
-
-.flow-item:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
-}
-
-.flow-icon {
+.overview-icon {
   width: 48px;
   height: 48px;
   border-radius: 12px;
@@ -914,156 +650,176 @@ watch([() => props.date, () => props.hour], () => {
   color: white;
 }
 
-.inflow .flow-icon {
+.total-icon {
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+}
+
+.in-icon {
   background: linear-gradient(135deg, #10b981 0%, #059669 100%);
 }
 
-.outflow .flow-icon {
+.out-icon {
   background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
 }
 
-.flow-icon svg {
+.overview-icon svg {
   width: 24px;
   height: 24px;
 }
 
-.flow-content {
+.overview-content {
   flex: 1;
 }
 
-.flow-value {
-  font-size: 24px;
+.overview-value {
+  font-size: 28px;
   font-weight: 700;
   color: #1e293b;
   margin-bottom: 4px;
 }
 
-.flow-label {
+.overview-label {
   font-size: 14px;
   color: #64748b;
   font-weight: 500;
 }
 
-/* 分析区块 */
-.analysis-section {
-  margin-bottom: 32px;
+/* 调度表格 */
+.dispatch-tables {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
 }
 
-.analysis-card {
+.dispatch-table-section {
   background: white;
-  padding: 32px;
   border-radius: 16px;
   border: 1px solid #e2e8f0;
-  position: relative;
+  overflow: hidden;
 }
 
-.analysis-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 4px;
-  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-  border-radius: 16px 16px 0 0;
-}
-
-.comparison-display {
+.table-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 24px;
-  padding: 20px;
-  background: #f8fafc;
-  border-radius: 12px;
+  gap: 12px;
+  padding: 20px 24px;
+  border-bottom: 1px solid #e2e8f0;
 }
 
-.comparison-item {
-  text-align: center;
-  flex: 1;
+.inbound-header {
+  background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+  color: #065f46;
 }
 
-.comparison-label {
-  font-size: 12px;
-  color: #64748b;
-  font-weight: 500;
-  margin-bottom: 8px;
-  display: block;
+.outbound-header {
+  background: linear-gradient(135deg, #fef2f2 0%, #fecaca 100%);
+  color: #7f1d1d;
 }
 
-.actual-number {
-  font-size: 28px;
-  font-weight: 700;
-  color: #10b981;
-}
-
-.predict-number {
-  font-size: 28px;
-  font-weight: 700;
-  color: #3b82f6;
-}
-
-.vs-divider {
-  font-size: 16px;
-  font-weight: 600;
-  color: #94a3b8;
-  background: white;
-  padding: 8px 16px;
+.table-icon {
+  width: 32px;
+  height: 32px;
+  background: rgba(255, 255, 255, 0.8);
   border-radius: 8px;
-  border: 2px solid #e2e8f0;
-}
-
-.difference-display {
-  text-align: center;
-  padding: 20px;
-  background: #f1f5f9;
-  border-radius: 12px;
-}
-
-.difference-label {
-  font-size: 14px;
-  color: #64748b;
-  font-weight: 500;
-  margin-bottom: 12px;
-}
-
-.difference-value {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  font-size: 32px;
-  font-weight: 800;
 }
 
-.difference-value.positive {
-  color: #10b981;
+.table-icon svg {
+  width: 16px;
+  height: 16px;
 }
 
-.difference-value.negative {
-  color: #ef4444;
+.table-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
 }
 
-.difference-value.zero {
+.table-container {
+  overflow-x: auto;
+}
+
+.dispatch-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.dispatch-table th {
+  background: #f8fafc;
+  padding: 16px;
+  text-align: left;
+  font-weight: 600;
+  color: #475569;
+  font-size: 14px;
+  border-bottom: 2px solid #e2e8f0;
+}
+
+.dispatch-table td {
+  padding: 16px;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 14px;
+  color: #334155;
+}
+
+.dispatch-table tr:hover {
+  background: #f8fafc;
+}
+
+.schedule-id {
+  font-weight: 600;
+  color: #4953c2;
+  font-family: 'Courier New', monospace;
+}
+
+.station-info {
+  min-width: 150px;
+}
+
+.station-name {
+  font-weight: 600;
+  color: #1e293b;
+  margin-bottom: 4px;
+}
+
+.station-id {
+  font-size: 12px;
   color: #64748b;
+  font-family: 'Courier New', monospace;
 }
 
-.difference-sign {
-  font-size: 24px;
+.bikes-count {
+  font-weight: 600;
+  color: #059669;
+  text-align: center;
 }
 
-.difference-number {
-  font-size: 32px;
+.status-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  color: white;
+  text-align: center;
+  min-width: 60px;
+}
+
+.update-time {
+  font-size: 12px;
+  color: #64748b;
+  min-width: 120px;
 }
 
 /* 无数据状态 */
-.no-data-section {
+.no-dispatch-data {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 60px 20px;
-  gap: 20px;
+  padding: 80px 20px;
+  gap: 16px;
   background: white;
   border-radius: 16px;
   border: 1px solid #e2e8f0;
@@ -1086,9 +842,15 @@ watch([() => props.date, () => props.hour], () => {
 }
 
 .no-data-text {
-  font-size: 16px;
+  font-size: 18px;
   color: #64748b;
-  font-weight: 500;
+  font-weight: 600;
+}
+
+.no-data-desc {
+  font-size: 14px;
+  color: #94a3b8;
+  text-align: center;
 }
 
 /* 响应式设计 */
@@ -1112,47 +874,16 @@ watch([() => props.date, () => props.hour], () => {
     padding: 20px;
   }
   
-  .header-info {
-    gap: 12px;
-  }
-  
-  .station-icon {
-    width: 40px;
-    height: 40px;
-  }
-  
-  .dialog-title {
-    font-size: 18px;
-  }
-  
-  .info-grid {
+  .dispatch-overview {
     grid-template-columns: 1fr;
   }
   
-  .data-comparison {
-    grid-template-columns: 1fr;
+  .table-container {
+    overflow-x: auto;
   }
   
-  .flow-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .time-display {
-    flex-direction: column;
-    gap: 16px;
-  }
-  
-  .time-divider {
-    display: none;
-  }
-  
-  .comparison-display {
-    flex-direction: column;
-    gap: 16px;
-  }
-  
-  .vs-divider {
-    order: 2;
+  .dispatch-table {
+    min-width: 600px;
   }
 }
 
@@ -1172,36 +903,24 @@ watch([() => props.date, () => props.hour], () => {
   }
   
   .station-icon {
-    width: 36px;
-    height: 36px;
+    width: 40px;
+    height: 40px;
   }
   
   .dialog-title {
-    font-size: 16px;
+    font-size: 18px;
   }
   
   .station-subtitle {
     font-size: 13px;
   }
   
-  .section-title {
-    font-size: 16px;
+  .time-subtitle {
+    font-size: 11px;
   }
   
-  .card-value {
-    font-size: 28px;
-  }
-  
-  .flow-value {
-    font-size: 20px;
-  }
-  
-  .actual-number, .predict-number {
+  .overview-value {
     font-size: 24px;
-  }
-  
-  .difference-number {
-    font-size: 28px;
   }
 }
 
@@ -1216,85 +935,13 @@ watch([() => props.date, () => props.hour], () => {
 }
 
 .dialog-content::-webkit-scrollbar-thumb {
-  background: linear-gradient(135deg, #4953c2 0%, #0f1a87 100%);
+  background: #cbd5e1;
   border-radius: 3px;
 }
-
 .dialog-content::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(135deg, #4953c2 0%, #0e177e 100%);
+  background: #94a3b8;
 }
-
-/* 微动画效果 */
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.station-info > .info-section {
-  animation: fadeInUp 0.5s ease forwards;
-}
-
-.station-info > .info-section:nth-child(1) {
-  animation-delay: 0.1s;
-}
-
-.station-info > .info-section:nth-child(2) {
-  animation-delay: 0.2s;
-}
-
-.station-info > .data-comparison {
-  animation: fadeInUp 0.5s ease forwards;
-  animation-delay: 0.3s;
-}
-
-.station-info > .flow-section {
-  animation: fadeInUp 0.5s ease forwards;
-  animation-delay: 0.4s;
-}
-
-.station-info > .analysis-section {
-  animation: fadeInUp 0.5s ease forwards;
-  animation-delay: 0.5s;
-}
-
-/* 悬浮效果增强 */
-.data-card:hover .card-icon {
-  transform: scale(1.1);
-  transition: transform 0.2s ease;
-}
-
-.flow-item:hover .flow-icon {
-  transform: scale(1.05);
-  transition: transform 0.2s ease;
-}
-
-.info-item:hover .info-label svg {
-  transform: scale(1.1);
-  transition: transform 0.2s ease;
-}
-
-/* 渐变背景动画 */
-@keyframes gradientShift {
-  0% {
-    background-position: 0% 50%;
-  }
-  50% {
-    background-position: 100% 50%;
-  }
-  100% {
-    background-position: 0% 50%;
-  }
-}
-
-.dialog-header {
-  background: linear-gradient(135deg, #4953c2 0%, #29148f 50%, #091275 100%);
-  background-size: 200% 200%;
-  animation: gradientShift 6s ease infinite;
+.dialog-content::-webkit-scrollbar-thumb:active {
+  background: #6b7280;
 }
 </style>
