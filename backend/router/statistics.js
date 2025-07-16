@@ -224,4 +224,92 @@ router.get('/flow/day', authMiddleware, async (req, res) => {
     }
 });
 
+function formatDateToLocalYYYYMMDD(date) {
+    if (!(date instanceof Date) || isNaN(date)) {
+        return null; // 或者返回一个默认值，如 'N/A'
+    }
+
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0'); // 月份从0开始，需要+1，并补零
+    const day = String(date.getDate()).padStart(2, '0'); // 补零
+
+    return `${year}-${month}-${day}`;
+}
+
+/**
+ * @api {get} /flow/days 查询每日总流量
+ * @apiDescription 传入一个日期，返回该日期之前15天内，每一天的总流入、总流出和总流量。
+ * @access Private
+ */
+router.get('/flow/days', authMiddleware, async (req, res) => {
+    // 1. 从请求查询参数中获取目标日期
+    const { target_date } = req.query;
+
+    // 2. 参数校验
+    if (!target_date) {
+        return res.status(400).json({ error: '请求失败，缺少 "target_date" 参数。' });
+    }
+
+    const targetDateObj = new Date(target_date);
+    if (isNaN(targetDateObj.getTime())) {
+        return res.status(400).json({ error: '无效的日期格式。请使用 YYYY-MM-DD 格式。' });
+    }
+
+    // 格式化为 'YYYY-MM-DD'，以避免时区问题
+    const formattedTargetDate = targetDateObj.toISOString().slice(0, 10);
+
+    try {
+        // 3. 准备SQL查询
+        // - WHERE timestamp >= DATE_SUB(?, INTERVAL 15 DAY): 查询范围是目标日期前15天
+        // - WHERE timestamp < ?: 查询范围不包括目标日期当天
+        // - GROUP BY DATE(timestamp): 按天对数据进行分组
+        // - ORDER BY flow_date ASC: 按日期升序排列结果
+        const sql = `
+            SELECT
+                DATE(timestamp) AS flow_date,
+                SUM(inflow) AS total_inflow,
+                SUM(outflow) AS total_outflow
+            FROM
+                station_hourly_flow
+            WHERE
+                timestamp >= DATE_SUB(?, INTERVAL 15 DAY) AND timestamp < ?
+            GROUP BY
+                flow_date
+            ORDER BY
+                flow_date ASC;
+        `;
+
+        const params = [formattedTargetDate, formattedTargetDate];
+
+        // 4. 执行查询
+        const { rows } = await db.async.all(sql, params);
+
+        // 5. 格式化并返回结果
+        const formattedResult = rows.map(row => {
+            // 使用新的辅助函数来格式化日期
+            const localDate = formatDateToLocalYYYYMMDD(row.flow_date);
+
+            // 对数值进行一次解析，然后复用，代码更清晰
+            const inflow = parseInt(row.total_inflow, 10) || 0;
+            const outflow = parseInt(row.total_outflow, 10) || 0;
+
+            return {
+                date: localDate,
+                total_inflow: inflow,
+                total_outflow: outflow,
+                total_flow: inflow + outflow // 直接使用变量相加
+            };
+        });
+
+        res.json({
+            target_date: formattedTargetDate,
+            daily_summary: formattedResult
+        });
+
+    } catch (err) {
+        console.error('Daily Flow Summary API Error:', err);
+        res.status(500).json({ error: '服务器内部错误。' });
+    }
+});
+
 module.exports = router
