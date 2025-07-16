@@ -125,7 +125,6 @@ const logout = async () => {
   }
 }
 
-// 读取 localStorage 中的日期，若无则使用今天
 const today = new Date().toISOString().split('T')[0]
 const selectedDate = ref(localStorage.getItem('selectedDate') || today)
 const selectedHour = ref(localStorage.getItem('selectedHour') || '09:00')
@@ -179,6 +178,7 @@ onMounted(() => {
   background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.1'%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E") repeat;
   pointer-events: none;
 }
+
 /* Header 样式 */
 .header {
   display: flex;
