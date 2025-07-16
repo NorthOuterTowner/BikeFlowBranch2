@@ -129,8 +129,8 @@ def predict_and_write():
         X = df[expected_features]
         
         # 5. 加载模型并预测
-        model_in = joblib.load('./handle/lgbm/inflow_model.pkl')
-        model_out = joblib.load('./handle/lgbm/outflow_model.pkl')
+        model_in = joblib.load('./handle/lgbm/inflow_model_tuned.pkl')
+        model_out = joblib.load('./handle/lgbm/outflow_model_tuned.pkl')
         
         df['pred_inflow'] = model_in.predict(X)
         df['pred_outflow'] = model_out.predict(X)
