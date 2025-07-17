@@ -75,7 +75,7 @@ router.post('/change', authMiddleware, async (req, res) => {
 
       const distance = calcLength(startLat,startLng,endLat,endLng)
 
-      let time = (distance/1000/20)*60*60*1000/50
+      let time = (distance/1000/20)*60*60*1000/20
       console.log(time)
       //change status of dispatch
       const statusSql = "update `station_schedule` set `status` = 1 where `id` = ? ;"
@@ -169,7 +169,7 @@ router.post('/cancelChange',authMiddleware, async (req,res) => {
 
     const distance = calcLength(startLat,startLng,endLat,endLng)
 
-    let time = (distance/1000/20)*60*60*1000/50
+    let time = (distance/1000/20)*60*60*1000/20
 
     dispatchHour=parseInt(dispatchHour);
     

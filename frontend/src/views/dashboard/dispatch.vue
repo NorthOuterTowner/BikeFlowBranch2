@@ -743,18 +743,45 @@ const filteredDispatchList = computed(() => {
 // ==================== adopt/撤销 ====================
 async function handleStart(item) {
   try {
-    await startDispatch({
+    const res = await startDispatch({
       startStation: item.start_station.id,
       endStation: item.end_station.id,
       number: item.bikes_to_move,
       dispatchDate: lookup_date.value,
       dispatchHour: lookup_hour.value,
       dispatchId: item.schedule_id
-    })
-    item.statusInt = "正在执行"
-    item.status = mapStatus(item.statusInt)
+    });
+
+    item.statusInt = "正在执行";
+    item.status = mapStatus(item.statusInt);
+    item.dispatchTime = res.data.time;
+
+    console.log(`调度执行耗时：${res.data.time} ms`);
+
+    // 保存当前操作的调度ID（或生成唯一标识）
+    const currentScheduleId = item.schedule_id;
+
+    const expectedDuration = res.data.time || 5000;
+
+    setTimeout(async () => {
+      console.log("开始调度接口返回时间:", res.data.time);
+
+      // 重新从列表中获取当前 item（防止状态已被取消）
+      const currentItem = allDispatchList.value.find(i => i.schedule_id === currentScheduleId);
+
+      // 如果不存在、或状态已被撤销/非“正在执行”，跳过刷新
+      if (!currentItem || currentItem.statusInt !== "正在执行") {
+        console.log("调度已被撤销或状态已变，跳过刷新");
+        return;
+      }
+
+      console.log("调度预计完成，开始刷新列表");
+      await refreshDispatchList();
+
+    }, expectedDuration + 1000);
+
   } catch (e) {
-    console.error('执行调度失败', e)
+    console.error("执行调度失败", e);
   }
 }
 
@@ -780,8 +807,14 @@ async function handleReject(item) {
 
 
 async function handleCancel(item) {
+  if (item.isCancelling) {
+    ElMessage.success("撤销中，禁止重复操作");
+    return;
+  }
+  item.isCancelling = true;
+  ElMessage.info("正在撤销调度，请稍候...");
   try {
-    await cancelDispatch({
+    const res = await cancelDispatch({
       startStation: item.start_station.id,
       endStation: item.end_station.id,
       number: item.bikes_to_move,
@@ -789,8 +822,24 @@ async function handleCancel(item) {
       dispatchHour: lookup_hour.value,
       dispatchId: item.schedule_id
     })
-    item.statusInt = "待执行"
-    item.status = mapStatus(item.statusInt)
+    const time = res.data.time;
+    const waitTime = (typeof time === 'number' && time > 0) ? time : 5000;
+
+    // 撤销请求耗时立即显示
+    item.dispatchTime = waitTime;
+    console.log(`撤销调度耗时：${time} ms`);
+
+    // 等待撤销耗时结束
+    await new Promise(resolve => setTimeout(resolve, waitTime + 1000));
+
+    await refreshDispatchList();
+    // 撤销完成，状态变回待执行，耗时显示“-”
+    const currentItem = allDispatchList.value.find(i => i.schedule_id === item.schedule_id);
+    if (currentItem) {
+      currentItem.statusInt = "待执行";
+      currentItem.status = mapStatus(currentItem.statusInt);
+      currentItem.dispatchTime = "";
+    }
   } catch (e) {
     console.error('撤销调度失败', e)
   }
@@ -931,6 +980,7 @@ async function refreshDispatchList() {
             <th class="col-status">状态</th>
             <th class="col-number">数量</th>
             <th class="col-action">操作</th>
+            <th class="col-time">耗时</th>
             <th class="col-nav">导航</th>
           </tr>
         </thead>
@@ -987,7 +1037,12 @@ async function refreshDispatchList() {
                 撤销
               </button>
             </td>
-
+            <td class="col-time">
+              <span v-if="item.dispatchTime">
+                {{ (item.dispatchTime / 1000).toFixed(2) }} 秒
+              </span>
+              <span v-else>-</span>
+            </td>
             <td class="col-nav">
               <button 
                 @click.stop="showNavigation(item)" 
@@ -1003,8 +1058,6 @@ async function refreshDispatchList() {
     </div>
   </div>
 </div>
-
-
 
       <div class="resizer" @mousedown="startResize"></div>
 
@@ -1481,6 +1534,10 @@ async function refreshDispatchList() {
 
 .col-action {
   width: 70px;
+  text-align: center;
+}
+.col-time {
+  width: 80px;
   text-align: center;
 }
 
