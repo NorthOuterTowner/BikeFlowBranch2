@@ -48,6 +48,10 @@ export function cancelDispatch(data) {
   return request.post('/dispatch/cancelChange', data)
 }
 
+export function rejectDispatch(data) {
+  return request.post('/dispatch/reject', {id: data.dispatchId})
+}
+
 export async function getStationAssign(params = {}) {
   try {
     const res = await request.get('/search/stationAssign', { params });
@@ -127,12 +131,7 @@ export async function postDispatchPlan(target_time, user_guidance) {
     }
 
     // 格式化可读文本
-    let result = `调度时间：${data.schedule_time}\n`
-    data.optimized_plan.forEach(item => {
-      result += `从站点 ${item.from_station_id} 调 ${item.bikes_to_move} 辆车到 ${item.to_station_id}。\n理由：${item.reason}\n\n`
-    })
-
-    return result.trim()
+    return data // 返回原始 json：{ schedule_time, optimized_plan }
   } catch (error) {
     console.error('请求出错', error)
     return '请求出错，请稍后再试'

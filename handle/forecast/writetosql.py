@@ -12,6 +12,7 @@ from torch_geometric.utils import dense_to_sparse
 sys.path.append('./handle/forecast')  # 添加模型所在路径
 from stgcn_model import STGCN  # 现在应该能正确导入了
 
+
 # 配置
 sys.stdout.reconfigure(encoding='utf-8')
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -140,7 +141,174 @@ def analyze_predictions(preds, station_ids):
     
     if unique_inflows < 10 or unique_outflows < 10:
         print("警告: 预测结果多样性不足，可能存在模型退化问题！")
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from datetime import datetime
+from sklearn.metrics import mean_absolute_error, mean_squared_error
 
+def evaluate_predictions(preds, Y_test, predict_times, station_ids):
+    """
+    评估STGCN预测结果，分析零值分布、潮汐效应和预测质量
+
+    参数:
+    - preds: 预测结果，形状为 (时间点, 站点数, 2)，2表示[inflow, outflow]
+    - Y_test: 测试集真实值，形状为 (时间点, 站点数, 2)
+    - predict_times: 预测时间戳列表
+    - station_ids: 站点ID列表
+
+    输出:
+    - 零值分析结果
+    - 潮汐效应分析图
+    - 预测质量指标（MAE, RMSE）
+    - 可视化图表
+    """
+    print("\n=== 预测结果评估 ===")
+
+    # 确保输入数据形状匹配
+    if preds.shape != Y_test.shape:
+        print(f"警告: 预测数据形状 {preds.shape} 与真实数据形状 {Y_test.shape} 不匹配")
+        return
+
+    # 转换为numpy数组并确保非负
+    preds = np.clip(preds, 0, None)
+    Y_test = np.clip(Y_test, 0, None)
+    num_times, num_stations, num_features = preds.shape
+
+    # 提取小时信息
+    hours = [datetime.strptime(t, '%Y-%m-%d %H:%M:%S').hour for t in predict_times]
+    hours = np.array(hours)
+
+    # === 零值分析 ===
+    print("\n[零值分析]")
+    # 整体零值比例
+    inflow_zero_ratio = np.mean(preds[:, :, 0] == 0)
+    outflow_zero_ratio = np.mean(preds[:, :, 1] == 0)
+    print(f"整体零值比例 - 流入: {inflow_zero_ratio:.2%}, 流出: {outflow_zero_ratio:.2%}")
+
+    # 按站点统计零值比例
+    station_zero_ratios = []
+    for s in range(num_stations):
+        inflow_zero = np.mean(preds[:, s, 0] == 0)
+        outflow_zero = np.mean(preds[:, s, 0] == 0)
+        station_zero_ratios.append((inflow_zero, outflow_zero, station_ids[s]))
+    station_zero_ratios.sort(reverse=True, key=lambda x: x[0])  # 按流入零值比例排序
+    print("\n零值比例最高的5个站点:")
+    for inflow_z, outflow_z, sid in station_zero_ratios[:5]:
+        print(f"站点 {sid}: 流入零值比例={inflow_z:.2%}, 流出零值比例={outflow_z:.2%}")
+
+    # 按小时统计零值比例
+    hourly_zero_ratios = []
+    for h in range(24):
+        mask = hours == h
+        if np.sum(mask) > 0:
+            inflow_zero = np.mean(preds[mask, :, 0] == 0)
+            outflow_zero = np.mean(preds[mask, :, 1] == 0)
+            hourly_zero_ratios.append((h, inflow_zero, outflow_zero))
+    print("\n零值比例最高的5个小时:")
+    for h, inflow_z, outflow_z in sorted(hourly_zero_ratios, key=lambda x: x[1], reverse=True)[:5]:
+        print(f"小时 {h}: 流入零值比例={inflow_z:.2%}, 流出零值比例={outflow_z:.2%}")
+
+    # 零值热力图
+    zero_heatmap = np.zeros((24, num_stations))
+    for h in range(24):
+        mask = hours == h
+        if np.sum(mask) > 0:
+            zero_heatmap[h, :] = np.mean(preds[mask, :, 0] == 0, axis=0)
+    plt.figure(figsize=(12, 6))
+    sns.heatmap(zero_heatmap, cmap='Reds', vmin=0, vmax=1)
+    plt.title("按小时和站点的流入零值比例热力图")
+    plt.xlabel("站点索引")
+    plt.ylabel("小时")
+    plt.show()
+
+    # === 潮汐效应分析 ===
+    print("\n[潮汐效应分析]")
+    # 按小时聚合平均流量
+    hourly_inflow_pred = np.zeros(24)
+    hourly_outflow_pred = np.zeros(24)
+    hourly_inflow_true = np.zeros(24)
+    hourly_outflow_true = np.zeros(24)
+    for h in range(24):
+        mask = hours == h
+        if np.sum(mask) > 0:
+            hourly_inflow_pred[h] = np.mean(preds[mask, :, 0])
+            hourly_outflow_pred[h] = np.mean(preds[mask, :, 1])
+            hourly_inflow_true[h] = np.mean(Y_test[mask, :, 0])
+            hourly_outflow_true[h] = np.mean(Y_test[mask, :, 1])
+
+    # 绘制潮汐效应曲线
+    plt.figure(figsize=(12, 6))
+    plt.plot(range(24), hourly_inflow_true, 'b-', label='真实流入')
+    plt.plot(range(24), hourly_inflow_pred, 'b--', label='预测流入')
+    plt.plot(range(24), hourly_outflow_true, 'r-', label='真实流出')
+    plt.plot(range(24), hourly_outflow_pred, 'r--', label='预测流出')
+    plt.title("按小时的平均流量（潮汐效应）")
+    plt.xlabel("小时")
+    plt.ylabel("平均流量")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+    # 按站点分析潮汐效应（选择波动最大的站点）
+    station_stds = np.std(preds[:, :, 0], axis=0)
+    top_stations = np.argsort(station_stds)[-3:]  # 选择波动最大的3个站点
+    plt.figure(figsize=(15, 5))
+    for i, s in enumerate(top_stations):
+        plt.subplot(1, 3, i+1)
+        inflow_pred = [np.mean(preds[hours == h, s, 0]) for h in range(24)]
+        outflow_pred = [np.mean(preds[hours == h, s, 1]) for h in range(24)]
+        inflow_true = [np.mean(Y_test[hours == h, s, 0]) for h in range(24)]
+        outflow_true = [np.mean(Y_test[hours == h, s, 1]) for h in range(24)]
+        plt.plot(range(24), inflow_true, 'b-', label='真实流入')
+        plt.plot(range(24), inflow_pred, 'b--', label='预测流入')
+        plt.plot(range(24), outflow_true, 'r-', label='真实流出')
+        plt.plot(range(24), outflow_pred, 'r--', label='预测流出')
+        plt.title(f"站点 {station_ids[s]} 潮汐效应")
+        plt.xlabel("小时")
+        plt.ylabel("流量")
+        plt.legend()
+        plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+    # === 预测质量评估 ===
+    print("\n[预测质量评估]")
+    mae_inflow = mean_absolute_error(preds[:, :, 0].flatten(), Y_test[:, :, 0].flatten())
+    mae_outflow = mean_absolute_error(preds[:, :, 1].flatten(), Y_test[:, :, 1].flatten())
+    rmse_inflow = np.sqrt(mean_squared_error(preds[:, :, 0].flatten(), Y_test[:, :, 0].flatten()))
+    rmse_outflow = np.sqrt(mean_squared_error(preds[:, :, 1].flatten(), Y_test[:, :, 1].flatten()))
+    print(f"MAE - 流入: {mae_inflow:.4f}, 流出: {mae_outflow:.4f}")
+    print(f"RMSE - 流入: {rmse_inflow:.4f}, 流出: {rmse_outflow:.4f}")
+
+    # 按小时分析误差
+    hourly_mae_inflow = np.zeros(24)
+    hourly_mae_outflow = np.zeros(24)
+    for h in range(24):
+        mask = hours == h
+        if np.sum(mask) > 0:
+            hourly_mae_inflow[h] = mean_absolute_error(preds[mask, :, 0], Y_test[mask, :, 0])
+            hourly_mae_outflow[h] = mean_absolute_error(preds[mask, :, 1], Y_test[mask, :, 1])
+    plt.figure(figsize=(12, 6))
+    plt.plot(range(24), hourly_mae_inflow, 'b-', label='流入MAE')
+    plt.plot(range(24), hourly_mae_outflow, 'r-', label='流出MAE')
+    plt.title("按小时的预测误差（MAE）")
+    plt.xlabel("小时")
+    plt.ylabel("MAE")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+    # 按站点分析误差
+    station_mae_inflow = np.mean(np.abs(preds[:, :, 0] - Y_test[:, :, 0]), axis=0)
+    station_mae_outflow = np.mean(np.abs(preds[:, :, 1] - Y_test[:, :, 1]), axis=0)
+    print("\n预测误差最大的5个站点:")
+    top_error_stations = np.argsort(station_mae_inflow)[-5:]
+    for s in top_error_stations:
+        print(f"站点 {station_ids[s]}: 流入MAE={station_mae_inflow[s]:.4f}, 流出MAE={station_mae_outflow[s]:.4f}")
+
+    print("\n=== 评估完成 ===")
 def write_to_database(preds, predict_times):
     """更健壮的数据库写入"""
     print("\n准备写入数据库...")
@@ -211,8 +379,15 @@ if __name__ == "__main__":
         with open('./handle/forecast/station_ids.json', 'r') as f:
             station_ids = json.load(f)
         
+        # 加载测试集真实数据并调整形状
+        data = np.load('./handle/forecast/stgcn_dataset.npz')
+        Y_test = data['Y_test'][:100].squeeze(1)  # 移除时间步长维度，从 (100, 1, 86, 2) 变为 (100, 86, 2)
+        
         # 分析结果
         analyze_predictions(preds, station_ids)
+        
+        # 调用评估函数
+        evaluate_predictions(preds, Y_test, predict_times, station_ids)
         
         # 可视化前3个波动大的站点
         plt.figure(figsize=(15, 6))

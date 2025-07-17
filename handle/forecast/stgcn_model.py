@@ -45,7 +45,7 @@ class STGCN(nn.Module):
         self.block2 = STGCNBlock(64, 64, num_nodes)
         self.block3 = STGCNBlock(64, 64, num_nodes)
         self.block4 = STGCNBlock(64, 64, num_nodes)
-        self.final_conv = nn.Conv2d(64, out_channels, kernel_size=(1, 1))  # 去掉Sigmoid，输出范围不限
+        self.final_conv = nn.Conv2d(64, out_channels, kernel_size=(1, 1)) # 去掉Sigmoid，输出范围不限
 
     
 

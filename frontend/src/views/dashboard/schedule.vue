@@ -192,14 +192,15 @@ function buildQueryTime(date, hour) {
     return new Date().toISOString()
   }
 }
+
 /**
- * 更新调度箭头样式创建函数，支持状态显示
+ * 创建优化后的调度线条样式（无箭头）
  * @param {number} quantity - 调度数量
  * @param {string} status - 调度状态
- * @param {string} color - 箭头颜色
+ * @param {string} color - 线条颜色
  * @returns {Style} OpenLayers样式对象
  */
-function createDispatchArrowStyleWithStatus(quantity, status, color = '#ff6b35') {
+function createDispatchLineStyleWithStatus(quantity, status, color = '#ff6b35') {
   // 根据状态调整颜色
   let statusColor = color
   switch (status) {
@@ -219,29 +220,33 @@ function createDispatchArrowStyleWithStatus(quantity, status, color = '#ff6b35')
       statusColor = color
   }
   
-  // 根据调度数量计算线条宽度 (最小2px，最大10px)
-  const lineWidth = Math.max(2, Math.min(10, quantity * 0.8))
+  // 根据调度数量计算线条宽度 (最小3px，最大12px)
+  const lineWidth = Math.max(3, Math.min(12, quantity * 1.2))
   
   return new Style({
     stroke: new Stroke({
       color: statusColor,
       width: lineWidth,
-      lineDash: status === '已完成' ? [5, 5] : [0] // 已完成状态使用虚线
+      lineDash: status === '已完成' ? [8, 4] : [0], // 已完成状态使用虚线
+      lineCap: 'round', // 线条末端圆滑
+      lineJoin: 'round' // 线条连接处圆滑
     }),
     text: new Text({
-      text: `${quantity}`,
+      text: `${quantity}辆`,
       fill: new Fill({ color: '#ffffff' }),
       stroke: new Stroke({ color: statusColor, width: 2 }),
-      font: 'bold 12px Arial',
+      font: 'bold 13px "Microsoft YaHei", Arial, sans-serif',
       placement: 'line',
       textAlign: 'center',
-      offsetY: -2
+      offsetY: -3,
+      backgroundFill: new Fill({ color: statusColor }), // 文字背景
+      backgroundStroke: new Stroke({ color: '#ffffff', width: 1 }), // 文字背景边框
+      padding: [2, 4, 2, 4] // 文字内边距
     })
   })
 }
-
 /**
- * 更新的添加调度方案到地图函数
+ * 更新的添加调度方案到地图函数（仅显示线条，无箭头）
  * @param {Array} dispatches - 调度方案数组
  */
 function addDispatchesToMapWithStatus(dispatches) {
@@ -310,59 +315,22 @@ function addDispatchesToMapWithStatus(dispatches) {
     })
 
     // 设置线条样式（带状态）
-    const lineStyle = createDispatchArrowStyleWithStatus(quantity, status)
+    const lineStyle = createDispatchLineStyleWithStatus(quantity, status)
     lineFeature.setStyle(lineStyle)
 
-    // 修改：设置要素属性（用于悬停提示）- 使用站点名称
+    // 设置要素属性（用于悬停提示）
     lineFeature.set('dispatchData', {
-      startStation: displayStartStationName, // 使用站点名称而不是ID
-      endStation: displayEndStationName,     // 使用站点名称而不是ID
+      startStation: displayStartStationName,
+      endStation: displayEndStationName,
       quantity: quantity,
       status: status,
       scheduleId: scheduleId
     })
 
     features.push(lineFeature)
-
-    // 创建箭头头部
-    const angle = calculateAngle(startCoord, endCoord)
-    const arrowHeadFeature = new Feature({
-      geometry: new Point(endCoord)
-    })
-    
-    // 根据状态调整箭头颜色
-    let arrowColor = '#ff6b35'
-    switch (status) {
-      case '待执行':
-        arrowColor = '#ff6b35'
-        break
-      case '正在执行':
-        arrowColor = '#28a745'
-        break
-      case '已完成':
-        arrowColor = '#6c757d'
-        break
-      case '已取消':
-        arrowColor = '#dc3545'
-        break
-    }
-    
-    const arrowHeadStyle = createArrowHeadStyle(endCoord, angle, arrowColor)
-    arrowHeadFeature.setStyle(arrowHeadStyle)
-    
-    // 修改：也为箭头头部设置悬停数据 - 使用站点名称
-    arrowHeadFeature.set('dispatchData', {
-      startStation: displayStartStationName, // 使用站点名称而不是ID
-      endStation: displayEndStationName,     // 使用站点名称而不是ID
-      quantity: quantity,
-      status: status,
-      scheduleId: scheduleId
-    })
-    
-    features.push(arrowHeadFeature)
   })
 
-  // 添加要素到图层
+  // 添加要素到地图
   dispatchLayer.getSource().addFeatures(features)
   console.log(`已添加 ${features.length} 个调度要素到地图`)
 }
@@ -469,40 +437,6 @@ function getStationStyle(bikeNum = 0) {
   })
 }
 
-/**
- * 创建箭头头部样式
- * @param {Array} endCoordinate - 终点坐标
- * @param {number} rotation - 旋转角度
- * @param {string} color - 箭头颜色
- * @returns {Style} 箭头头部样式
- */
-function createArrowHeadStyle(endCoordinate, rotation, color = '#ff6b35') {
-  return new Style({
-    geometry: new Point(endCoordinate),
-    image: new Icon({
-      src: 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(`
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20">
-          <path d="M2 10 L10 2 L10 6 L18 6 L18 14 L10 14 L10 18 Z" fill="${color}" stroke="white" stroke-width="1"/>
-        </svg>
-      `),
-      scale: 0.8,
-      rotation: rotation + Math.PI / 2, // 修改：添加90度偏移，确保箭头正确指向终点
-      anchor: [0.5, 0.5]
-    })
-  })
-}
-
-/**
- * 计算两点之间的角度
- * @param {Array} start - 起点坐标
- * @param {Array} end - 终点坐标
- * @returns {number} 角度（弧度）
- */
-function calculateAngle(start, end) {
-  const dx = end[0] - start[0]
-  const dy = end[1] - start[1]
-  return Math.atan2(dy, dx)
-}
 
 async function fetchStationLocations() {
   console.log('进到获取站点位置函数')
@@ -1288,7 +1222,6 @@ defineExpose({
 }
 
 /* OpenLayers 样式覆盖 */
-
 .map-container :deep(.ol-zoom-custom) {
   position: absolute;
   bottom: 20px;
@@ -1315,11 +1248,6 @@ defineExpose({
 .map-container :deep(.ol-zoom-custom button:hover) {
   background-color: #f0f0f0;
 }
-
-.map-container :deep(.ol-zoom button:focus) {
-  background-color: rgba(0,60,136,.7);
-}
-
 .map-container :deep(.ol-attribution) {
   position: absolute;
   bottom: 0;

@@ -679,8 +679,13 @@ query_date	String	要查询的日期，格式为 YYYY-MM-DD。	"2025-01-21"
 返回格式
 ```bash
 {
+  "query_time": "2025-01-21T08:00:00Z",
+  "total_inflow": 150,//进入车流量
+  "total_outflow": 145,//出车流量
+  "total_flow": 295//总流量
   "query_date": "2025-01-21",
-  "hourly_flows": [
+  "hourly_flows": 
+  [
     {
       "hour": 0,//对应的时间
       "total_inflow": 15,
@@ -694,4 +699,64 @@ query_date	String	要查询的日期，格式为 YYYY-MM-DD。	"2025-01-21"
       "total_flow": 20
     },
     // ...
+  ]
+}
+```
+
+（4）获取某一时间点总流量（GET）
+```bash
+/statistics/flow/day
+```
+请求格式
+```bash
+query_date	String	要查询的日期，格式为 YYYY-MM-DD。	"2025-01-21"
+```
+返回格式
+```
+    "target_date": "2025-01-30",
+    "daily_summary": [
+        {
+            "date": "2025-01-15",//数据的时间
+            "total_inflow": 1885,
+            "total_outflow": 1886,
+            "total_flow": 3771
+        },
+        {
+            "date": "2025-01-16",
+            "total_inflow": 1983,
+            "total_outflow": 1982,
+            "total_flow": 3965
+        },
+        {
+            "date": "2025-01-17",
+            "total_inflow": 2085,
+            "total_outflow": 2089,
+            "total_flow": 4174
+        },
+        ...
+```
+
+11.调度方案请求(get)
+```bash
+/schedule
+```
+请求格式
+```bash
+{
+    "date": "2025-06-13",//日期
+    "hour": 9//整点时间，生成是该点的调度方案
+}
+```
+返回格式
+```bash
+{
+    "success": true,
+    "message": "调度成功",
+    "output": "[调度完成] 调度动作数：6"
+}
+{
+    "success": false,
+    "message": "调度执行失败",
+    "error": "[警告] 时间段内无数据：..."
+}
 ```

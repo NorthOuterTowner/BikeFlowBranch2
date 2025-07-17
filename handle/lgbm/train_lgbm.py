@@ -1,64 +1,84 @@
+import sys
+sys.stdout.reconfigure(encoding='utf-8')
+
 import pandas as pd
+import lightgbm as lgb
 import joblib
+import shap
 import matplotlib.pyplot as plt
-import numpy as np
-from sklearn.metrics import mean_absolute_error, mean_squared_error
-from add_features import add_features  # 确保 add_features.py 文件存在并可导入
 
-# 加载原始样本（和训练同样的来源）
-df = pd.read_csv('./handle/lgbm/lgbm_raw_samples.csv', parse_dates=['timestamp'])
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
 
-# 应用特征工程（时间 + 滞后 + 节假日 + 天气）
-df = add_features(df)
+# 加载数据
+df = pd.read_csv('./handle/lgbm/lgbm_featured_samples.csv', parse_dates=['timestamp'])
 
-# 加载编码器，转换 station_id
-encoder = joblib.load('./handle/lgbm/station_id_encoder.pkl')
-df['station_id_encoded'] = encoder.transform(df['station_id'].astype(str))
+# 对 station_id 编码
+le = LabelEncoder()
+df['station_id'] = le.fit_transform(df['station_id'])
+joblib.dump(le, './handle/lgbm/station_id_encoder.pkl')
 
-# 准备特征（与训练保持一致）
-features = [
-    'station_id_encoded', 'hour', 'dayofweek', 'is_weekend', 'is_holiday',
-    'temp', 'prcp', 'wspd',
-    'inflow_lag_1', 'inflow_lag_2', 'inflow_lag_3',
-    'outflow_lag_1', 'outflow_lag_2', 'outflow_lag_3'
-]
-
-# 丢弃缺失样本（由于滞后导致前几条为空）
-df.dropna(subset=features + ['inflow', 'outflow'], inplace=True)
-
+# 特征列
+features = ['station_id', 'hour', 'dayofweek', 'is_weekend', 'is_holiday',
+            'temp', 'prcp', 'wspd',
+            'inflow_lag_1', 'inflow_lag_2', 'inflow_lag_3',
+            'outflow_lag_1', 'outflow_lag_2', 'outflow_lag_3']
 X = df[features]
-y_true_inflow = df['inflow']
-y_true_outflow = df['outflow']
+y_in = df['inflow_next']
+y_out = df['outflow_next']
 
-# 加载模型并预测
-model_in = joblib.load('./handle/lgbm/inflow_model.pkl')
-model_out = joblib.load('./handle/lgbm/outflow_model.pkl')
+# 划分训练集和验证集
+X_train, X_val, y_in_train, y_in_val = train_test_split(X, y_in, test_size=0.2, random_state=42)
+_, _, y_out_train, y_out_val = train_test_split(X, y_out, test_size=0.2, random_state=42)
 
-df['pred_inflow'] = model_in.predict(X)
-df['pred_outflow'] = model_out.predict(X)
+# LightGBM 参数
+params = {
+    'objective': 'regression',
+    'metric': 'l2',
+    'num_leaves': 31,
+    'learning_rate': 0.05,
+    'feature_fraction': 0.9,
+    'bagging_fraction': 0.8,
+    'bagging_freq': 5,
+    'verbose': 0
+}
 
-# 计算误差指标
-mae_in = mean_absolute_error(y_true_inflow, df['pred_inflow'])
-rmse_in = mean_squared_error(y_true_inflow, df['pred_inflow'], squared=False)
+# 训练 inflow 模型
+model_in = lgb.LGBMRegressor(**params)
+model_in.fit(
+    X_train, y_in_train,
+    eval_set=[(X_val, y_in_val)],
+    callbacks=[lgb.early_stopping(stopping_rounds=10)]
+)
 
-mae_out = mean_absolute_error(y_true_outflow, df['pred_outflow'])
-rmse_out = mean_squared_error(y_true_outflow, df['pred_outflow'], squared=False)
+# 训练 outflow 模型
+model_out = lgb.LGBMRegressor(**params)
+model_out.fit(
+    X_train, y_out_train,
+    eval_set=[(X_val, y_out_val)],
+    callbacks=[lgb.early_stopping(stopping_rounds=10)]
+)
 
-print(f"Inflow - MAE: {mae_in:.3f}, RMSE: {rmse_in:.3f}")
-print(f"Outflow - MAE: {mae_out:.3f}, RMSE: {rmse_out:.3f}")
+# 保存模型
+joblib.dump(model_in, './handle/lgbm/inflow_model.pkl')
+joblib.dump(model_out, './handle/lgbm/outflow_model.pkl')
 
-# ---------- 可视化对比 ----------
-def plot_comparison(true, pred, title, ylabel):
-    plt.figure(figsize=(12, 4))
-    plt.plot(true.values[:200], label='真实值', marker='o', markersize=3)
-    plt.plot(pred[:200], label='预测值', marker='s', markersize=3)
-    plt.title(title)
-    plt.xlabel('样本点（前200个）')
-    plt.ylabel(ylabel)
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
+print("模型训练完成，已保存")
 
-plot_comparison(y_true_inflow.values, df['pred_inflow'].values, '流入量预测 vs 真实值', '流入量')
-plot_comparison(y_true_outflow.values, df['pred_outflow'].values, '流出量预测 vs 真实值', '流出量')
+# ------------------------------
+# ✅ SHAP 分析（仅 inflow 模型）
+# ------------------------------
+
+# 用训练好的 inflow 模型进行 SHAP 分析
+explainer = shap.Explainer(model_in)
+shap_values = explainer(X)
+
+# 输出全局特征重要性图（蜂群图）
+plt.figure()
+shap.summary_plot(shap_values, X, show=False)
+plt.tight_layout()
+plt.savefig('./handle/lgbm/shap_summary_inflow.png')
+print("SHAP 分析完成，已保存至 shap_summary_inflow.png")
+
+# 可选保存 SHAP 数据供未来深入分析
+joblib.dump((X, shap_values), './handle/lgbm/shap_values_inflow.pkl')
