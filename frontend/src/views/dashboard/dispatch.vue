@@ -397,7 +397,7 @@ function getStationStyle(station) {
     image: new Icon({
       src: iconSrc,
       scale: 1.5,
-      anchor: [0.5, 1]
+      anchor: [0.5, 0.9]
     }),
     text: new Text({
       text: station.name,
@@ -510,8 +510,6 @@ function drawDispatchPlanOnMap(plan) {
 
   const startPt = fromLonLat([item.start_station.lng, item.start_station.lat]);
   const endPt = fromLonLat([item.end_station.lng, item.end_station.lat]);
-
-
 
   // 路线
   const line = new LineString([startPt, endPt]);
