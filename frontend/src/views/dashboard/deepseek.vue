@@ -9,9 +9,40 @@ const router = useRouter()
 
 // 欢迎信息 & 时间
 const welcoming = ref('管理员，欢迎您！')
-const fixedDate = computed(() => new Date().toLocaleDateString())
-const currentHour = computed(() => new Date().getHours() + ':00')
-const target_time = new Date('2025-06-13T09:35:00Z').toISOString()
+const fixedDate = localStorage.getItem('selectedDate'); // "2025-07-17"
+const currentHour = localStorage.getItem('selectedHour'); // "14:00"
+
+const target_time = getTargetTime(fixedDate, currentHour);
+console.log('target_time:', target_time);  // 输出类似：2025-07-17T06:00:00.000Z
+function getTargetTime(fixedDate, currentHour) {
+  // 如果没传，默认取当前时间
+  if (!fixedDate) {
+    fixedDate = new Date().toISOString().split('T')[0]; // "2025-07-17"
+  }
+
+  if (!currentHour) {
+    currentHour = new Date().getHours() + ':00';
+  }
+
+  const mapHourToSegment = (hour) => {
+    if (hour < 3) return 0;
+    if (hour < 6) return 3;
+    if (hour < 9) return 6;
+    if (hour < 12) return 9;
+    if (hour < 15) return 12;
+    if (hour < 18) return 15;
+    if (hour < 21) return 18;
+    return 21;
+  };
+
+  const hour = parseInt(currentHour.split(':')[0]);
+  const mappedHour = mapHourToSegment(hour);
+
+  const localDateTime = new Date(`${fixedDate}T${String(mappedHour).padStart(2, '0')}:00:00`);
+  const targetTime = new Date(localDateTime.getTime() - localDateTime.getTimezoneOffset() * 60000).toISOString();
+
+  return targetTime;
+}
 
 // 当前模式：'chat' 或 'plan'
 const currentMode = ref('chat')
@@ -222,6 +253,7 @@ async function acceptSelectedPlans() {
 
   // ✅ 清空勾选
   selectedPlanIds.value = []
+  scrollToBottom()
 }
 
 
@@ -249,6 +281,7 @@ function sendInitMessage(mode) {
 // 切换模式时发送初始化提示
 watch(currentMode, (mode) => {
   sendInitMessage(mode)
+  scrollToBottom()
 })
 
 // 回车处理
