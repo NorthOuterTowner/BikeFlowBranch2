@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const { exec } = require('child_process');
 const authMiddleware = require("../utils/auth");
+const path = require('path');
+const pythonExe = 'D:\\Download\\Python3.8.10\\python.exe';
 
 // GET /api/schedule?date=2025-06-13&hour=9
 router.get('/',authMiddleware, (req, res) => {
@@ -12,9 +14,15 @@ router.get('/',authMiddleware, (req, res) => {
   }
 
   // 拼接调用命令
-  const command = `python D:/myGithub/newBikeFlow/handle/newdispatch/patch.py --date ${date} --hour ${hour}`;
+  const env = Object.create(process.env);
+  env.PYTHONUSERBASE = process.env.PYTHONUSERBASE || `${process.env.USERPROFILE}\\AppData\\Roaming\\Python\\Python38\\site-packages`;
+
+  const scriptPath = path.resolve(__dirname, '../../handle/newdispatch/patch.py');
+  const command = `"${pythonExe}" "${scriptPath}" --date ${date} --hour ${hour}`;
 
   exec(command, (error, stdout, stderr) => {
+    console.log('stdout:', stdout);
+    console.log('stderr:', stderr);
     if (error) {
       console.error(`[调度错误]`, stderr);
       return res.status(500).json({ success: false, message: '调度执行失败', error: stderr });

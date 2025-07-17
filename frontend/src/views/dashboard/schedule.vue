@@ -192,14 +192,15 @@ function buildQueryTime(date, hour) {
     return new Date().toISOString()
   }
 }
+
 /**
- * 创建优化后的调度箭头样式
+ * 创建优化后的调度线条样式（无箭头）
  * @param {number} quantity - 调度数量
  * @param {string} status - 调度状态
- * @param {string} color - 箭头颜色
+ * @param {string} color - 线条颜色
  * @returns {Style} OpenLayers样式对象
  */
-function createDispatchArrowStyleWithStatus(quantity, status, color = '#ff6b35') {
+function createDispatchLineStyleWithStatus(quantity, status, color = '#ff6b35') {
   // 根据状态调整颜色
   let statusColor = color
   switch (status) {
@@ -226,9 +227,9 @@ function createDispatchArrowStyleWithStatus(quantity, status, color = '#ff6b35')
     stroke: new Stroke({
       color: statusColor,
       width: lineWidth,
-      lineDash: status === '已完成' ? [8, 4] : [0], // 已完成状态使用虚线，间隔更美观
-      lineCap: 'round', // 🔥 新增：线条末端圆滑
-      lineJoin: 'round' // 🔥 新增：线条连接处圆滑
+      lineDash: status === '已完成' ? [8, 4] : [0], // 已完成状态使用虚线
+      lineCap: 'round', // 线条末端圆滑
+      lineJoin: 'round' // 线条连接处圆滑
     }),
     text: new Text({
       text: `${quantity}辆`,
@@ -238,15 +239,14 @@ function createDispatchArrowStyleWithStatus(quantity, status, color = '#ff6b35')
       placement: 'line',
       textAlign: 'center',
       offsetY: -3,
-      backgroundFill: new Fill({ color: statusColor }), // 🔥 新增：文字背景
-      backgroundStroke: new Stroke({ color: '#ffffff', width: 1 }), // 🔥 新增：文字背景边框
-      padding: [2, 4, 2, 4] // 🔥 新增：文字内边距
+      backgroundFill: new Fill({ color: statusColor }), // 文字背景
+      backgroundStroke: new Stroke({ color: '#ffffff', width: 1 }), // 文字背景边框
+      padding: [2, 4, 2, 4] // 文字内边距
     })
   })
 }
-
 /**
- * 更新的添加调度方案到地图函数（优化版）
+ * 更新的添加调度方案到地图函数（仅显示线条，无箭头）
  * @param {Array} dispatches - 调度方案数组
  */
 function addDispatchesToMapWithStatus(dispatches) {
@@ -309,24 +309,13 @@ function addDispatchesToMapWithStatus(dispatches) {
       endCoord = fromLonLat([parseFloat(endStation.longitude), parseFloat(endStation.latitude)])
     }
 
-    // 🔥 新增：计算线条的中点，用于放置箭头（避免箭头与终点站点重叠）
-    const midX = (startCoord[0] + endCoord[0]) / 2
-    const midY = (startCoord[1] + endCoord[1]) / 2
-    const midCoord = [midX, midY]
-
-    // 🔥 新增：计算箭头偏移位置（距离终点2/3处）
-    const arrowRatio = 0.75 // 箭头位置比例
-    const arrowX = startCoord[0] + (endCoord[0] - startCoord[0]) * arrowRatio
-    const arrowY = startCoord[1] + (endCoord[1] - startCoord[1]) * arrowRatio
-    const arrowCoord = [arrowX, arrowY]
-
     // 创建线条要素
     const lineFeature = new Feature({
       geometry: new LineString([startCoord, endCoord])
     })
 
     // 设置线条样式（带状态）
-    const lineStyle = createDispatchArrowStyleWithStatus(quantity, status)
+    const lineStyle = createDispatchLineStyleWithStatus(quantity, status)
     lineFeature.setStyle(lineStyle)
 
     // 设置要素属性（用于悬停提示）
@@ -339,49 +328,13 @@ function addDispatchesToMapWithStatus(dispatches) {
     })
 
     features.push(lineFeature)
-
-    // 🔥 修改：创建箭头头部，使用优化后的位置和角度计算
-    const angle = calculateAngle(startCoord, endCoord)
-    const arrowHeadFeature = new Feature({
-      geometry: new Point(arrowCoord) // 使用计算后的箭头位置
-    })
-    
-    // 根据状态调整箭头颜色
-    let arrowColor = '#ff6b35'
-    switch (status) {
-      case '待执行':
-        arrowColor = '#ff6b35'
-        break
-      case '正在执行':
-        arrowColor = '#28a745'
-        break
-      case '已完成':
-        arrowColor = '#6c757d'
-        break
-      case '已取消':
-        arrowColor = '#dc3545'
-        break
-    }
-    
-    const arrowHeadStyle = createArrowHeadStyle(arrowCoord, angle, arrowColor)
-    arrowHeadFeature.setStyle(arrowHeadStyle)
-    
-    // 也为箭头头部设置悬停数据
-    arrowHeadFeature.set('dispatchData', {
-      startStation: displayStartStationName,
-      endStation: displayEndStationName,
-      quantity: quantity,
-      status: status,
-      scheduleId: scheduleId
-    })
-    
-    features.push(arrowHeadFeature)
   })
 
   // 添加要素到地图
   dispatchLayer.getSource().addFeatures(features)
   console.log(`已添加 ${features.length} 个调度要素到地图`)
 }
+
 
 /**
  * 更新的切换调度图层显示状态函数
@@ -482,50 +435,6 @@ function getStationStyle(bikeNum = 0) {
       offsetY: -20
     })
   })
-}
-/**
- * 创建优化后的箭头头部样式
- * @param {Array} endCoordinate - 终点坐标
- * @param {number} rotation - 旋转角度
- * @param {string} color - 箭头颜色
- * @returns {Style} 箭头头部样式
- */
-function createArrowHeadStyle(endCoordinate, rotation, color = '#ff6b35') {
-  return new Style({
-    geometry: new Point(endCoordinate),
-    image: new Icon({
-      src: 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(`
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-          <defs>
-            <linearGradient id="arrowGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" style="stop-color:${color};stop-opacity:0.8" />
-              <stop offset="100%" style="stop-color:${color};stop-opacity:1" />
-            </linearGradient>
-          </defs>
-          <path d="M12 2 L22 12 L12 22 L12 16 L2 16 L2 8 L12 8 Z" 
-                fill="url(#arrowGradient)" 
-                stroke="white" 
-                stroke-width="1"/>
-        </svg>
-      `),
-      scale: 0.7,
-      rotation: rotation + Math.PI/ 2,
-      anchor: [0.5, 0.5]
-    })
-  })
-}
-
-
-/**
- * 计算两点之间的角度（优化版）
- * @param {Array} start - 起点坐标
- * @param {Array} end - 终点坐标
- * @returns {number} 角度（弧度）
- */
-function calculateAngle(start, end) {
-  const dx = end[0] - start[0]
-  const dy = end[1] - start[1]
-  return Math.atan2(dy, dx)
 }
 
 
@@ -1339,11 +1248,6 @@ defineExpose({
 .map-container :deep(.ol-zoom-custom button:hover) {
   background-color: #f0f0f0;
 }
-
-.map-container :deep(.ol-zoom button:focus) {
-  background-color: rgba(0,60,136,.7);
-}
-
 .map-container :deep(.ol-attribution) {
   position: absolute;
   bottom: 0;

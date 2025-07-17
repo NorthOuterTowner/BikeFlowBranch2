@@ -2,6 +2,9 @@
   <div class="profile-page">
     <!-- Header -->
     <header class="header">
+      <div class="header-left">
+        <h1 class="title">共享单车潮汐预测调度系统个人设置</h1>
+      </div>
       <div class="user-info">
         <div class="user-top">
           <span class="welcoming">{{ welcoming }}</span>
@@ -318,7 +321,7 @@ onMounted(() => {
 /* Header 样式 */
 .header {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
   align-items: center;
   padding: 10px 20px;
   background-color: #fff;
@@ -610,5 +613,10 @@ onMounted(() => {
     width: 100%;
     justify-content: center;
   }
+}
+.title {
+  font-size: 20px;
+  font-weight: bold;
+  margin: 0;
 }
 </style>

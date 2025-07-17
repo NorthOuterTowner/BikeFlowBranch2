@@ -75,7 +75,7 @@ router.post('/change', authMiddleware, async (req, res) => {
 
       const distance = calcLength(startLat,startLng,endLat,endLng)
 
-      let time = (distance/1000/20)*60*60*1000
+      let time = (distance/1000/20)*60*60*1000/20
       console.log(time)
       //change status of dispatch
       const statusSql = "update `station_schedule` set `status` = 1 where `id` = ? ;"
@@ -113,7 +113,8 @@ router.post('/change', authMiddleware, async (req, res) => {
 
       res.status(200).send({
           code:200,
-          msg:"开始进行调度"
+          msg:"开始进行调度",
+          time
       })
     }  
   }else{
@@ -168,7 +169,7 @@ router.post('/cancelChange',authMiddleware, async (req,res) => {
 
     const distance = calcLength(startLat,startLng,endLat,endLng)
 
-    let time = (distance/1000/20)*60*60*1000
+    let time = (distance/1000/20)*60*60*1000/20
 
     dispatchHour=parseInt(dispatchHour);
     
@@ -215,7 +216,8 @@ router.post('/cancelChange',authMiddleware, async (req,res) => {
       );
     res.status(200).send({
         code:200,
-        msg:"开始返回调度"
+        msg:"开始返回调度",
+        time:(Date.now() - startTime)
     })
   }
 });
