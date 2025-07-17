@@ -16,6 +16,12 @@
         <!-- 时间筛选器 -->
         <div class="filter-section">
           <h2>流量统计</h2>
+
+           <!-- 历史流量折线图 -->
+        <div class="history-chart-section" style="width: 800px; height: 400px; margin: 20px auto;">
+          <canvas ref="historyCanvas" width="800" height="400"></canvas>
+        </div>
+        
           <div class="date-filter">
             <div class="date-item">
               <label>开始日期:</label>
@@ -84,10 +90,11 @@
           </table>
         </div>
 
-        
+        <!-- 小时流量折线图 -->
         <div class="line-chart-section" style="width: 800px; height: 400px; margin: 20px auto;">
           <canvas ref="lineCanvas" width="800" height="400"></canvas>
         </div>
+
 
       </div>
     </div>
@@ -156,9 +163,7 @@ const initDefaultDates = () => {
   endHour.value = maxHourStr.padStart(2, '0')
 }
 
-
 const showTable = ref(false)
-
 
 const generateHourRange = (startDateStr, startHourStr, endDateStr, endHourStr) => {
   const start = new Date(`${startDateStr}T${startHourStr}:00:00`)
@@ -178,9 +183,12 @@ const generateHourRange = (startDateStr, startHourStr, endDateStr, endHourStr) =
 
   return hours
 }
+
 let lineChartInstance = null // 声明折线图实例
+let historyChartInstance = null // 声明历史流量图实例
 
 const lineCanvas = ref(null)
+const historyCanvas = ref(null)
 
 const renderLineChart = () => {
   if (!lineCanvas.value || hourlyFlowData.value.length === 0) return
@@ -254,8 +262,98 @@ const renderLineChart = () => {
   })
 }
 
+const renderHistoryChart = () => {
+  console.log('开始渲染历史流量图表')
+  console.log('historyCanvas.value:', historyCanvas.value)
+  console.log('historyFlowData.value:', historyFlowData.value)
+  
+  if (!historyCanvas.value || historyFlowData.value.length === 0) {
+    console.log('无法渲染历史图表：canvas或数据为空')
+    return
+  }
+
+  const ctx = historyCanvas.value.getContext('2d')
+
+  // 销毁旧的实例避免内存泄露
+  if (historyChartInstance) {
+    historyChartInstance.destroy()
+  }
+
+  const labels = historyFlowData.value.map(item => item.date)
+  const data = historyFlowData.value.map(item => item.total_flow)
+  
+  console.log('图表标签:', labels)
+  console.log('图表数据:', data)
+
+  historyChartInstance = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: '历史流量',
+        data: data,
+        fill: true,
+        backgroundColor: 'rgba(255, 99, 132, 0.2)',
+        borderColor: '#FF6384',
+        borderWidth: 2,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        tension: 0.4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        title: {
+          display: true,
+          text: '历史流量趋势图',
+          font: {
+            size: 18,
+            weight: 'bold'
+          },
+          padding: 20
+        },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              return `流量: ${context.parsed.y.toLocaleString()}`
+            }
+          }
+        }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          title: {
+            display: true,
+            text: '流量'
+          },
+          ticks: {
+            callback: function(value) {
+              return value.toLocaleString()
+            }
+          }
+        },
+        x: {
+          title: {
+            display: true,
+            text: '日期'
+          }
+        }
+      },
+      animation: {
+        duration: 1000,
+        easing: 'easeInOutQuart'
+      }
+    }
+  })
+  
+  console.log('历史流量图表渲染完成')
+}
 
 const hourlyFlowData = ref([]) // [{ time: '07-14 00:00', flow: 123 }, ...]
+const historyFlowData = ref([]) // [{ date: '2025-01-15', total_flow: 3771 }, ...]
 
 const fetchHourlyFlowDataByDayAPI = async (dateStr) => {
   try {
@@ -265,6 +363,18 @@ const fetchHourlyFlowDataByDayAPI = async (dateStr) => {
     return res.data.hourly_flows || []
   } catch (e) {
     console.error(`获取 ${dateStr} 小时流量失败:`, e)
+    return []
+  }
+}
+
+const fetchHistoryFlowDataAPI = async (dateStr) => {
+  try {
+    const res = await request.get('/statistics/flow/days', {
+      params: { target_date: dateStr }
+    })
+    return res.data.daily_summary || []
+  } catch (e) {
+    console.error(`获取历史流量数据失败:`, e)
     return []
   }
 }
@@ -299,6 +409,25 @@ const fetchHourlyFlowData = async () => {
   renderLineChart()
 }
 
+const fetchHistoryFlowData = async () => {
+  let selectedDate = localStorage.getItem('selectedDate')
+
+  if (!selectedDate) {
+    console.warn('localStorage中没有selectedDate，使用当前日期作为默认值')
+    const today = new Date().toISOString().slice(0, 10)
+    selectedDate = today
+    localStorage.setItem('selectedDate', today)  // ← 补上写入
+  }
+
+  try {
+    const data = await fetchHistoryFlowDataAPI(selectedDate)
+    historyFlowData.value = data
+    await nextTick()
+    renderHistoryChart()
+  } catch (error) {
+    console.error('获取历史流量数据失败:', error)
+  }
+}
 
 
 // 获取Top10数据
@@ -307,7 +436,6 @@ const fetchTop10Data = async () => {
     alert('请选择开始和结束日期')
     return
   }
-
 
   loading.value = true
   try {
@@ -324,6 +452,7 @@ const fetchTop10Data = async () => {
       renderChart()
       // 这里调用按小时流量折线图数据加载
       await fetchHourlyFlowData()
+
     } else {
       alert('获取数据失败')
     }
@@ -471,24 +600,26 @@ watch([endDate, endHour], ([d, h]) => {
   }
 })
 
-// 组件挂载
-onMounted(() => {
-  initDefaultDates()
+initDefaultDates()
+
+onMounted(async () => {
   startHourOptions.value = generateHourOptions(startDate.value)
   endHourOptions.value = generateHourOptions(endDate.value)
-  
-  // 动态加载Chart.js
+
   if (typeof Chart === 'undefined') {
     const script = document.createElement('script')
     script.src = 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js'
-    script.onload = () => {
-      fetchTop10Data()
+    script.onload = async () => {
+      await fetchTop10Data()
+      await fetchHistoryFlowData()
     }
     document.head.appendChild(script)
   } else {
-    fetchTop10Data()
+    await fetchTop10Data()
+    await fetchHistoryFlowData()
   }
 })
+
 </script>
 
 <style scoped>
@@ -697,7 +828,6 @@ onMounted(() => {
 .toggle-table-button button:hover {
   background-color: #357ABD;
 }
-
 
 /* 响应式设计 */
 @media (max-width: 768px) {

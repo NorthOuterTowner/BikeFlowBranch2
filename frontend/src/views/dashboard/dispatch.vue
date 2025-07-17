@@ -14,7 +14,7 @@ import { fromLonLat } from 'ol/proj'
 import { Style, Stroke, Fill, Circle, Text, Icon } from 'ol/style'
 import { Zoom } from 'ol/control' // 确保导入 Zoom
 import request from '@/api/axios' // Axios 请求实例
-import { startDispatch,cancelDispatch, getStationAssign, getDispatch, rejectDispatch } from '../../api/axios'
+import { startDispatch,cancelDispatch, getStationAssign, getDispatch, rejectDispatch, getDispatchPlan } from '../../api/axios'
 import Overlay from 'ol/Overlay'
 import { ElMessage } from 'element-plus'
 
@@ -55,11 +55,7 @@ const fixedDate = computed(() => {
   // 获取固定日期，优先从 localStorage 取，否则取当前日期
   return localStorage.getItem('selectedDate') || new Date().toISOString().split('T')[0]
 })
-const currentHour = getCurrentHourString() // 获取当前小时字符串
-
-//const now = new Date().toISOString()
-const lookup_date = ref('2025-06-13')
-const lookup_hour = ref(9)
+const currentHour = localStorage.getItem('selectedHour') // 获取当前小时字符串
 
 // 2. 在响应式数据部分添加导航相关变量
 const navigationActive = ref(false)
@@ -71,10 +67,15 @@ const selectedDispatch = ref(null)
 const loading = ref(false)
 let navigationLayer = null
 
-const topPanelHeight = ref(170) // 初始高度
+const topPanelHeight = ref(185) // 初始高度
 const minHeight = 100
 const maxHeight = 600
 let isResizing = false
+
+//编辑调度
+const editingDispatch = ref(null) // 当前正在编辑的调度方案
+const editQuantity = ref(0) // 编辑中的数量
+const showEditDialog = ref(false) // 是否显示编辑对话框
 
 function startResize(event) {
   isResizing = true
@@ -284,15 +285,6 @@ const highlightStationList = ref([])
 // ==================== 函数定义 ====================
 
 /**
- * 获取当前小时字符串 (例如 "16:00")
- */
-function getCurrentHourString() {
-  const now = new Date()
-  const hour = now.getHours().toString().padStart(2, '0')
-  return `${hour}:00`
-}
-
-/**
  * 登出功能
  */
 const logout = async () => {
@@ -311,6 +303,91 @@ const logout = async () => {
     router.push('/login')
   }
 }
+/**
+ * 编辑调度数量接口调用
+ */
+async function editDispatchQuantity(id, bikes) {
+  try {
+    const response = await request.post('/dispatch/edit', {
+      id: id,
+      bikes: bikes
+    })
+    
+    if (response.data?.code === 200) {
+      return { success: true, message: response.data.msg || '修改成功' }
+    } else {
+      return { success: false, message: response.data?.msg || '修改失败' }
+    }
+  } catch (error) {
+    console.error('编辑调度数量失败:', error)
+    return { success: false, message: '网络错误，请稍后重试' }
+  }
+}
+
+/**
+ * 打开编辑对话框
+ */
+function openEditDialog(item) {
+  editingDispatch.value = item
+  editQuantity.value = item.bikes_to_move || 0
+  showEditDialog.value = true
+}
+
+/**
+ * 关闭编辑对话框
+ */
+function closeEditDialog() {
+  editingDispatch.value = null
+  editQuantity.value = 0
+  showEditDialog.value = false
+}
+
+/**
+ * 确认保存编辑
+ */
+async function saveEditQuantity() {
+  if (!editingDispatch.value || editQuantity.value <= 0) {
+    alert('请输入有效的调度数量')
+    return
+  }
+  
+  try {
+    const result = await editDispatchQuantity(
+      editingDispatch.value.schedule_id, 
+      editQuantity.value
+    )
+    
+    if (result.success) {
+      // 更新本地数据
+      const index = allDispatchList.value.findIndex(
+        item => item.schedule_id === editingDispatch.value.schedule_id
+      )
+      if (index !== -1) {
+        allDispatchList.value[index].bikes_to_move = editQuantity.value
+      }
+      
+      // 如果当前选中的是被编辑的方案，重新绘制地图
+      if (selectedPlan.value && selectedPlan.value.schedule_id === editingDispatch.value.schedule_id) {
+        selectedPlan.value.bikes_to_move = editQuantity.value
+        drawDispatchPlanOnMap(selectedPlan.value)
+      }
+      
+      closeEditDialog()
+      
+      // 显示成功提示
+      if (typeof ElMessage !== 'undefined') {
+        ElMessage.success(result.message)
+      } else {
+        alert(result.message)
+      }
+    } else {
+      alert(result.message)
+    }
+  } catch (error) {
+    console.error('保存编辑失败:', error)
+    alert('保存失败，请稍后重试')
+  }
+}
 
 // 站点样式
 function getStationStyle(station) {
@@ -320,7 +397,7 @@ function getStationStyle(station) {
     image: new Icon({
       src: iconSrc,
       scale: 1.5,
-      anchor: [0.5, 1]
+      anchor: [0.5, 0.9]
     }),
     text: new Text({
       text: station.name,
@@ -332,15 +409,6 @@ function getStationStyle(station) {
   })
 }
 
-function getRouteStyle(count) {
-  return new Style({
-    stroke: new Stroke({
-      color: 'orange',
-      width: count > 5 ? 4 : 2,
-      lineDash: [5,5]
-    })
-  })
-}
 
 // 查看调出站点并高亮
 async function highlightStations() {
@@ -360,7 +428,7 @@ async function highlightStations() {
 
   // 第一次点击，获取数据并显示
   try {
-    const stations = await getStationAssign({ date: lookup_date.value, hour: lookup_hour.value });
+    const stations = await getStationAssign({ date: fixedDate.value, hour:currentHour});
     if (!stations.length) {
       console.warn('未获取到调出站点数据');
       highlightStationList.value = [];
@@ -443,8 +511,6 @@ function drawDispatchPlanOnMap(plan) {
   const startPt = fromLonLat([item.start_station.lng, item.start_station.lat]);
   const endPt = fromLonLat([item.end_station.lng, item.end_station.lat]);
 
-
-
   // 路线
   const line = new LineString([startPt, endPt]);
   const lineFeature = new Feature({ geometry: line });
@@ -498,7 +564,7 @@ function drawDispatchPlanOnMap(plan) {
 function getArrowStyle(rotation) {
   return new Style({
     image: new Icon({
-      src: '/icons/arrow.png', // 替换成你项目里的箭头图路径
+      src: '/icons/arrow.png',
       scale: 0.07,
       rotation: rotation,
       rotateWithView: true
@@ -562,7 +628,33 @@ function animateArrow(event) {
   mapInstance.render(); // 保持动画
 }
 
-
+/**
+ * 构建查询时间字符串
+ * @param {string} date - 日期 (YYYY-MM-DD)
+ * @param {string} hour - 小时 (HH:mm)
+ * @returns {string} ISO 8601格式的时间字符串
+ */
+function buildQueryTime(date, hour) {
+  try {
+    let hourStr = hour.toString()
+    
+    // 如果hour只是数字，转换为HH:00格式
+    if (!/\d{1,2}:\d{2}/.test(hourStr)) {
+      const hourNum = parseInt(hourStr)
+      hourStr = hourNum.toString().padStart(2, '0') + ':00'
+    }
+    
+    // 构建ISO 8601格式的时间字符串
+    const isoString = `${date}T${hourStr}:00Z`
+    
+    console.log('构建查询时间:', { date, hour, hourStr, isoString })
+    return isoString
+  } catch (error) {
+    console.error('构建查询时间失败:', error)
+    // 返回当前时间作为fallback
+    return new Date().toISOString()
+  }
+}
 
 /**
  * 选择调度方案并更新地图显示
@@ -625,6 +717,7 @@ onMounted(async () => {
   const zoomControl = new Zoom({
     className: 'ol-zoom-custom' // 使用自定义 CSS 类
   })
+
   mapInstance.addControl(zoomControl)
   mapInstance.addLayer(navigationLayer)
 
@@ -678,7 +771,8 @@ onMounted(async () => {
 // ==================== 获取数据 ====================
 async function fetchDispatch() {
   try {
-    const res = await getDispatch('2025-06-13T09:00:00Z')
+    const query_time= buildQueryTime(fixedDate.value, currentHour)
+    const res = await getDispatch(query_time)
     console.log('后端返回数据：', res.data)
     
     if (!res.data || typeof res.data !== 'object') {
@@ -743,18 +837,45 @@ const filteredDispatchList = computed(() => {
 // ==================== adopt/撤销 ====================
 async function handleStart(item) {
   try {
-    await startDispatch({
+    const res = await startDispatch({
       startStation: item.start_station.id,
       endStation: item.end_station.id,
       number: item.bikes_to_move,
-      dispatchDate: lookup_date.value,
-      dispatchHour: lookup_hour.value,
+      dispatchDate: fixedDate.value,
+      dispatchHour: currentHour,
       dispatchId: item.schedule_id
-    })
-    item.statusInt = "正在执行"
-    item.status = mapStatus(item.statusInt)
+    });
+
+    item.statusInt = "正在执行";
+    item.status = mapStatus(item.statusInt);
+    item.dispatchTime = res.data.time;
+
+    console.log(`调度执行耗时：${res.data.time} ms`);
+
+    // 保存当前操作的调度ID（或生成唯一标识）
+    const currentScheduleId = item.schedule_id;
+
+    const expectedDuration = res.data.time || 5000;
+
+    setTimeout(async () => {
+      console.log("开始调度接口返回时间:", res.data.time);
+
+      // 重新从列表中获取当前 item（防止状态已被取消）
+      const currentItem = allDispatchList.value.find(i => i.schedule_id === currentScheduleId);
+
+      // 如果不存在、或状态已被撤销/非“正在执行”，跳过刷新
+      if (!currentItem || currentItem.statusInt !== "正在执行") {
+        console.log("调度已被撤销或状态已变，跳过刷新");
+        return;
+      }
+
+      console.log("调度预计完成，开始刷新列表");
+      await refreshDispatchList();
+
+    }, expectedDuration + 1000);
+
   } catch (e) {
-    console.error('执行调度失败', e)
+    console.error("执行调度失败", e);
   }
 }
 
@@ -780,17 +901,39 @@ async function handleReject(item) {
 
 
 async function handleCancel(item) {
+  if (item.isCancelling) {
+    ElMessage.success("撤销中，禁止重复操作");
+    return;
+  }
+  item.isCancelling = true;
+  ElMessage.info("正在撤销调度，请稍候...");
   try {
-    await cancelDispatch({
+    const res = await cancelDispatch({
       startStation: item.start_station.id,
       endStation: item.end_station.id,
       number: item.bikes_to_move,
-      dispatchDate: lookup_date.value,
-      dispatchHour: lookup_hour.value,
+      dispatchDate: fixedDate.value,
+      dispatchHour: currentHour,
       dispatchId: item.schedule_id
     })
-    item.statusInt = "待执行"
-    item.status = mapStatus(item.statusInt)
+    const time = res.data.time;
+    const waitTime = (typeof time === 'number' && time > 0) ? time : 5000;
+
+    // 撤销请求耗时立即显示
+    item.dispatchTime = waitTime;
+    console.log(`撤销调度耗时：${time} ms`);
+
+    // 等待撤销耗时结束
+    await new Promise(resolve => setTimeout(resolve, waitTime + 1000));
+
+    await refreshDispatchList();
+    // 撤销完成，状态变回待执行，耗时显示“-”
+    const currentItem = allDispatchList.value.find(i => i.schedule_id === item.schedule_id);
+    if (currentItem) {
+      currentItem.statusInt = "待执行";
+      currentItem.status = mapStatus(currentItem.statusInt);
+      currentItem.dispatchTime = "";
+    }
   } catch (e) {
     console.error('撤销调度失败', e)
   }
@@ -838,6 +981,34 @@ function focusStationOnMap(station) {
     console.warn('地图未初始化或站点缺少经纬度信息。', { mapInstance, station });
   }
 }
+
+async function handleUpdate() {
+  try {
+    const hourParam = parseInt(currentHour.split(':')[0], 10);
+    const res = await getDispatchPlan(fixedDate.value, hourParam);
+    const data = res.data;
+
+    if (res.status === 200 && data.success) {
+      ElMessage.success('调度方案已更新');
+      await refreshDispatchList();
+    } else {
+      throw new Error(data.message || '调度失败');
+    }
+  } catch (err) {
+    console.error('更新失败', err);
+    ElMessage.error(err.message || '更新调度方案失败');
+  }
+}
+async function refreshDispatchList() {
+  try {
+    await fetchDispatch();
+    ElMessage.success('调度列表已刷新');
+  } catch (e) {
+    console.error('刷新调度列表失败', e);
+    ElMessage.error('刷新调度列表失败，请稍后再试');
+  }
+}
+
 </script>
 
 <template>
@@ -845,6 +1016,7 @@ function focusStationOnMap(station) {
     <header class="app-header">
       <div class="header-left">
         <h1 class="title">共享单车潮汐预测调度详情</h1>
+        <button class="update-button" @click="handleUpdate">更新调度方案</button>
       </div>
       <div class="user-info">
         <div class="user-top">
@@ -895,6 +1067,7 @@ function focusStationOnMap(station) {
 
     <!-- 右侧：可滚动列表 -->
     <div class="dispatch-list-scrollable">
+      <!-- table 部分 -->
       <table class="plan-table">
         <thead>
           <tr>
@@ -903,6 +1076,7 @@ function focusStationOnMap(station) {
             <th class="col-status">状态</th>
             <th class="col-number">数量</th>
             <th class="col-action">操作</th>
+            <th class="col-time">耗时</th>
             <th class="col-nav">导航</th>
           </tr>
         </thead>
@@ -935,7 +1109,21 @@ function focusStationOnMap(station) {
                 {{ item.statusInt }}
               </span>
             </td>
-            <td class="col-number">{{ item.bikes_to_move ?? '-' }}</td>
+            <td class="col-number">
+              <div class="quantity-control">
+                <div class="quantity-display">
+                  {{ item.bikes_to_move ?? '-' }}
+                </div>
+                <div class="quantity-buttons" v-if="item.statusInt === '待执行'">
+                  <button 
+                    class="qty-btn qty-edit" 
+                    @click.stop="openEditDialog(item)"
+                  >
+                    编辑
+                  </button>
+                </div>
+              </div>
+            </td>
             <td class="col-action">
               <button
                 v-if="item.statusInt === '待执行'"
@@ -959,7 +1147,12 @@ function focusStationOnMap(station) {
                 撤销
               </button>
             </td>
-
+            <td class="col-time">
+              <span v-if="item.dispatchTime">
+                {{ (item.dispatchTime / 1000).toFixed(2) }} 秒
+              </span>
+              <span v-else>-</span>
+            </td>
             <td class="col-nav">
               <button 
                 @click.stop="showNavigation(item)" 
@@ -972,11 +1165,50 @@ function focusStationOnMap(station) {
           </tr>
         </tbody>
       </table>
+
+      <!-- 编辑数量对话框 -->
+      <div v-if="showEditDialog" class="edit-dialog-overlay" @click="closeEditDialog">
+        <div class="edit-dialog" @click.stop>
+          <div class="edit-dialog-header">
+            <h3>编辑调度数量</h3>
+            <button class="dialog-close-btn" @click="closeEditDialog">×</button>
+          </div>
+          <div class="edit-dialog-content">
+            <div class="edit-info">
+              <div class="edit-route">
+                <span class="route-label">调度路线：</span>
+                <span class="route-text">
+                  {{ editingDispatch?.start_station.name }} → {{ editingDispatch?.end_station.name }}
+                </span>
+              </div>
+              <div class="edit-current">
+                <span class="current-label">当前数量：</span>
+                <span class="current-value">{{ editingDispatch?.bikes_to_move || 0 }} 辆</span>
+              </div>
+            </div>
+            <div class="edit-input-group">
+              <label for="quantity-input">新数量：</label>
+              <input 
+                id="quantity-input"
+                type="number" 
+                v-model.number="editQuantity" 
+                min="1"
+                max="999"
+                class="quantity-input"
+                @keyup.enter="saveEditQuantity"
+              />
+              <span class="input-unit">辆</span>
+            </div>
+          </div>
+     <div class="edit-dialog-footer">
+      <button class="dialog-btn dialog-btn-cancel" @click="closeEditDialog">取消</button>
+      <button class="dialog-btn dialog-btn-save" @click="saveEditQuantity">保存</button>
     </div>
   </div>
 </div>
-
-
+    </div>
+  </div>
+</div>
 
       <div class="resizer" @mousedown="startResize"></div>
 
@@ -1195,7 +1427,6 @@ function focusStationOnMap(station) {
   color: #fff;
 }
 
-
 .batch-buttons button,
 .highlight-btn button {
   padding: 4px 10px;
@@ -1259,7 +1490,427 @@ function focusStationOnMap(station) {
   margin-left: -1em; /* 向左移动点 */
 }
 
-/* 添加到 <style scoped> 中 */
+/* 数量控制区域样式 */
+.quantity-control {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.quantity-display {
+  font-weight: 600;
+  font-size: 14px;
+  color: #333;
+  min-height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.quantity-buttons {
+  display: flex;
+  gap: 2px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.qty-btn {
+  padding: 2px 6px;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 12px;
+  min-width: 20px;
+  height: 20px;
+  line-height: 1;
+  transition: all 0.2s ease;
+}
+
+.qty-edit {
+  background-color: #2196f3;
+  color: white;
+  font-size: 10px;
+  padding: 2px 4px;
+}
+
+.qty-edit:hover {
+  background-color: #1976d2;
+}
+
+/* 编辑对话框样式 - 美化版 */
+.edit-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.4));
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.edit-dialog {
+  background: linear-gradient(145deg, #ffffff, #f8f9fa);
+  border-radius: 16px;
+  width: 420px;
+  max-width: 90vw;
+  box-shadow: 
+    0 20px 40px rgba(0, 0, 0, 0.1),
+    0 8px 16px rgba(0, 0, 0, 0.08),
+    0 2px 4px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+  transform: translateY(-20px);
+  animation: slideIn 0.3s ease-out forwards;
+  border: 1px solid rgba(255, 255, 255, 0.8);
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.edit-dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  background: linear-gradient(135deg, #4953c2 0%, #0f1a87 100%);
+  background-size: 200% 200%;
+  animation: gradientShift 4s ease infinite;
+  border-bottom: none;
+  position: relative;
+}
+
+@keyframes gradientShift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.edit-dialog-header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.1), transparent);
+  pointer-events: none;
+}
+
+.edit-dialog-header h3 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: #ffffff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  letter-spacing: 0.5px;
+}
+
+.dialog-close-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  font-size: 20px;
+  color: #ffffff;
+  cursor: pointer;
+  padding: 0;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(10px);
+  position: relative;
+  overflow: hidden;
+}
+
+.dialog-close-btn::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  transition: all 0.3s ease;
+}
+
+.dialog-close-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: scale(1.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.dialog-close-btn:hover::before {
+  width: 100%;
+  height: 100%;
+}
+
+.dialog-close-btn:active {
+  transform: scale(0.95);
+}
+
+.edit-dialog-content {
+  padding: 24px;
+  background: #ffffff;
+  position: relative;
+}
+
+.edit-dialog-content::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(102, 126, 234, 0.3), transparent);
+}
+
+/* 响应式设计 */
+@media (max-width: 480px) {
+  .edit-dialog {
+    width: 95vw;
+    margin: 20px;
+  }
+  
+  .edit-dialog-header {
+    padding: 16px 20px;
+  }
+  
+  .edit-dialog-header h3 {
+    font-size: 18px;
+  }
+  
+  .dialog-close-btn {
+    width: 32px;
+    height: 32px;
+    font-size: 18px;
+  }
+  
+  .edit-dialog-content {
+    padding: 20px;
+  }
+}
+
+/* 深色主题支持 */
+@media (prefers-color-scheme: dark) {
+  .edit-dialog {
+    background: linear-gradient(145deg, #2d3748, #1a202c);
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+  
+  .edit-dialog-content {
+    background: #2d3748;
+    color: #e2e8f0;
+  }
+  
+  .edit-dialog-content::before {
+    background: linear-gradient(90deg, transparent, rgba(102, 126, 234, 0.4), transparent);
+  }
+}
+
+/* 高级动画效果 */
+.edit-dialog:hover {
+  box-shadow: 
+    0 25px 50px rgba(0, 0, 0, 0.15),
+    0 12px 20px rgba(0, 0, 0, 0.1),
+    0 4px 8px rgba(0, 0, 0, 0.08);
+  transform: translateY(-2px);
+  transition: all 0.3s ease;
+}
+
+/* 无障碍支持 */
+@media (prefers-reduced-motion: reduce) {
+  .edit-dialog-overlay,
+  .edit-dialog,
+  .dialog-close-btn,
+  .edit-dialog-header {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* 焦点样式 */
+.dialog-close-btn:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.5);
+}
+
+.dialog-close-btn:focus:not(:focus-visible) {
+  box-shadow: none;
+}
+
+
+.edit-dialog-content {
+  padding: 20px;
+}
+
+.edit-info {
+  margin-bottom: 20px;
+  padding: 12px;
+  background-color: #f8f9fa;
+  border-radius: 6px;
+}
+
+.edit-route, .edit-current {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.edit-route:last-child, .edit-current:last-child {
+  margin-bottom: 0;
+}
+
+.route-label, .current-label {
+  font-weight: 600;
+  color: #495057;
+  min-width: 80px;
+}
+
+.route-text {
+  color: #5a626c;
+  font-weight: 500;
+}
+
+.current-value {
+  color: #17116b;
+  font-weight: 600;
+}
+
+.edit-input-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.edit-input-group label {
+  font-weight: 600;
+  color: #495057;
+  min-width: 60px;
+}
+
+.quantity-input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  font-size: 14px;
+  text-align: center;
+}
+
+.quantity-input:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+.input-unit {
+  color: #6c757d;
+  font-size: 14px;
+}
+
+.edit-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 20px;
+  background-color: #f8f9fa;
+  border-top: 1px solid #e9ecef;
+}
+
+.dialog-btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.dialog-btn-cancel {
+  background-color: #6c757d;
+  color: white;
+}
+
+.dialog-btn-cancel:hover {
+  background-color: #5a6268;
+}
+
+.dialog-btn-save {
+  background-color: #2f1fac;
+  color: white;
+}
+
+.dialog-btn-save:hover {
+  background-color: #150c61;
+}
+
+/* 调整数量列宽度 */
+.col-number {
+  width: 120px;
+  text-align: center;
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+  .quantity-buttons {
+    flex-direction: column;
+    gap: 1px;
+  }
+  
+  .qty-btn {
+    width: 100%;
+    min-width: 40px;
+  }
+  
+  .edit-dialog {
+    width: 90vw;
+    margin: 20px;
+  }
+  
+  .edit-input-group {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  
+  .edit-input-group label {
+    min-width: auto;
+  }
+}
 
 /* 导航信息面板样式 */
 .navigation-info-panel {
@@ -1456,6 +2107,10 @@ function focusStationOnMap(station) {
   width: 70px;
   text-align: center;
 }
+.col-time {
+  width: 80px;
+  text-align: center;
+}
 
 .col-nav {
   width: 60px;
@@ -1505,6 +2160,35 @@ function focusStationOnMap(station) {
   width: 100%;
   height: 100%;
 }
+
+.map :deep(.ol-zoom-custom) {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  z-index: 1000;
+}
+
+.map :deep(.ol-zoom-custom button) {
+  width: 60px;
+  height: 60px;
+  font-size: 24px;
+  background-color: rgba(255, 255, 255, 0.95);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  transition: background-color 0.2s;
+}
+
+.map :deep(.ol-zoom-custom button:hover) {
+  background-color: #f0f0f0;
+}
+
+
 
 .navigation-info-panel {
   position: absolute;
@@ -1625,6 +2309,21 @@ function focusStationOnMap(station) {
 .btn-nav:disabled {
   background-color: #ccc;
   cursor: not-allowed;
+}
+.update-button {
+  margin-top: 6px;
+  width: fit-content;
+  padding: 5px 12px;
+  background-color: #409eff;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.update-button:hover {
+  background-color: #66b1ff;
 }
 
 </style>

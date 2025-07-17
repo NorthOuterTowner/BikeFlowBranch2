@@ -107,6 +107,7 @@ export default {
   overflow-y: auto; /* 关键：启用垂直滚动 */
   padding: 20px;
   box-sizing: border-box;
+  margin-bottom: 80px;
 }
 
 .app-header {
