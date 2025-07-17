@@ -504,38 +504,6 @@ function calculateAngle(start, end) {
   return Math.atan2(dy, dx)
 }
 
-/**
- * 模拟调度方案数据（测试用）
- */
-function generateMockDispatchData() {
-  if (stations.value.length < 2) {
-    console.warn('站点数据不足，无法生成模拟调度方案')
-    return []
-  }
-
-  const mockDispatches = []
-  const numDispatches = Math.min(5, Math.floor(stations.value.length / 2)) // 生成5个调度或站点数量的一半
-
-  for (let i = 0; i < numDispatches; i++) {
-    const startIndex = Math.floor(Math.random() * stations.value.length)
-    let endIndex = Math.floor(Math.random() * stations.value.length)
-    
-    // 确保起点和终点不同
-    while (endIndex === startIndex) {
-      endIndex = Math.floor(Math.random() * stations.value.length)
-    }
-
-    mockDispatches.push({
-      startStationId: stations.value[startIndex].station_id,
-      endStationId: stations.value[endIndex].station_id,
-      quantity: Math.floor(Math.random() * 15) + 1 // 1-15的随机数量
-    })
-  }
-
-  return mockDispatches
-}
-
-
 async function fetchStationLocations() {
   console.log('进到获取站点位置函数')
   try {
@@ -897,8 +865,7 @@ onMounted(async () => {
 defineExpose({
   addDispatchesToMapWithStatus,
   toggleDispatchLayerWithAPI,
-  fetchDispatchPlans,
-  generateMockDispatchData
+  fetchDispatchPlans
 })
 
 </script>

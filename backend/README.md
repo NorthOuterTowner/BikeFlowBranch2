@@ -493,7 +493,7 @@ endCoord
 ```
     "id":[调度方案编号],
     "bikes":[调度数量]
-}
+
 返回格式
 ```
 {
@@ -670,11 +670,11 @@ endCoord
 ```
 （3）获取某一时间点总流量（GET）
 ```bash
-/statistics/flow/hour
+/statistics/flow/day
 ```
 请求格式
 ```bash
-query_time	String	要查询的整点时间，ISO 8601格式。分钟、秒和毫秒必须为0。	"2025-01-21T08:00:00Z"
+query_date	String	要查询的日期，格式为 YYYY-MM-DD。	"2025-01-21"
 ```
 返回格式
 ```bash
@@ -683,6 +683,23 @@ query_time	String	要查询的整点时间，ISO 8601格式。分钟、秒和毫
   "total_inflow": 150,//进入车流量
   "total_outflow": 145,//出车流量
   "total_flow": 295//总流量
+  "query_date": "2025-01-21",
+  "hourly_flows": 
+  [
+    {
+      "hour": 0,//对应的时间
+      "total_inflow": 15,
+      "total_outflow": 18,
+      "total_flow": 33
+    },
+    {
+      "hour": 1,
+      "total_inflow": 8,
+      "total_outflow": 12,
+      "total_flow": 20
+    },
+    // ...
+  ]
 }
 ```
 
@@ -709,5 +726,4 @@ query_time	String	要查询的整点时间，ISO 8601格式。分钟、秒和毫
     "message": "调度执行失败",
     "error": "[警告] 时间段内无数据：..."
 }
-
-
+```
