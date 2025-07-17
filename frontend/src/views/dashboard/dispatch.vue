@@ -14,7 +14,7 @@ import { fromLonLat } from 'ol/proj'
 import { Style, Stroke, Fill, Circle, Text, Icon } from 'ol/style'
 import { Zoom } from 'ol/control' // 确保导入 Zoom
 import request from '@/api/axios' // Axios 请求实例
-import { startDispatch,cancelDispatch, getStationAssign, getDispatch, rejectDispatch } from '../../api/axios'
+import { startDispatch,cancelDispatch, getStationAssign, getDispatch, rejectDispatch, getDispatchPlan } from '../../api/axios'
 import Overlay from 'ol/Overlay'
 import { ElMessage } from 'element-plus'
 
@@ -71,7 +71,7 @@ const selectedDispatch = ref(null)
 const loading = ref(false)
 let navigationLayer = null
 
-const topPanelHeight = ref(170) // 初始高度
+const topPanelHeight = ref(185) // 初始高度
 const minHeight = 100
 const maxHeight = 600
 let isResizing = false
@@ -838,6 +838,33 @@ function focusStationOnMap(station) {
     console.warn('地图未初始化或站点缺少经纬度信息。', { mapInstance, station });
   }
 }
+
+async function handleUpdate() {
+  try {
+    const res = await getDispatchPlan(lookup_date.value, lookup_hour.value);
+    const data = res.data;
+
+    if (res.status === 200 && data.success) {
+      ElMessage.success('调度方案已更新');
+      await refreshDispatchList();
+    } else {
+      throw new Error(data.message || '调度失败');
+    }
+  } catch (err) {
+    console.error('更新失败', err);
+    ElMessage.error(err.message || '更新调度方案失败');
+  }
+}
+async function refreshDispatchList() {
+  try {
+    await fetchDispatch();
+    ElMessage.success('调度列表已刷新');
+  } catch (e) {
+    console.error('刷新调度列表失败', e);
+    ElMessage.error('刷新调度列表失败，请稍后再试');
+  }
+}
+
 </script>
 
 <template>
@@ -845,6 +872,7 @@ function focusStationOnMap(station) {
     <header class="app-header">
       <div class="header-left">
         <h1 class="title">共享单车潮汐预测调度详情</h1>
+        <button class="update-button" @click="handleUpdate">更新调度方案</button>
       </div>
       <div class="user-info">
         <div class="user-top">
@@ -1194,7 +1222,6 @@ function focusStationOnMap(station) {
   background-color: #5cb85c;
   color: #fff;
 }
-
 
 .batch-buttons button,
 .highlight-btn button {
@@ -1625,6 +1652,21 @@ function focusStationOnMap(station) {
 .btn-nav:disabled {
   background-color: #ccc;
   cursor: not-allowed;
+}
+.update-button {
+  margin-top: 6px;
+  width: fit-content;
+  padding: 5px 12px;
+  background-color: #409eff;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.update-button:hover {
+  background-color: #66b1ff;
 }
 
 </style>

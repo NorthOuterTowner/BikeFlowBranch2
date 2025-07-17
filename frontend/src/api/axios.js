@@ -68,6 +68,17 @@ export async function getStationAssign(params = {}) {
   }
 }
 
+export function getDispatchPlan(date, hour) {
+  return request({
+    url: '/schedule',
+    method: 'get',
+    params: {
+      date,
+      hour
+    }
+  })
+}
+
 export async function postSuggestion(target_time,message) {
   const account = sessionStorage.getItem('account') 
   const token = sessionStorage.getItem('token')
