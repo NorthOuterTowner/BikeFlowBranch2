@@ -193,7 +193,7 @@ function buildQueryTime(date, hour) {
   }
 }
 /**
- * 更新调度箭头样式创建函数，支持状态显示
+ * 创建优化后的调度箭头样式
  * @param {number} quantity - 调度数量
  * @param {string} status - 调度状态
  * @param {string} color - 箭头颜色
@@ -219,29 +219,34 @@ function createDispatchArrowStyleWithStatus(quantity, status, color = '#ff6b35')
       statusColor = color
   }
   
-  // 根据调度数量计算线条宽度 (最小2px，最大10px)
-  const lineWidth = Math.max(2, Math.min(10, quantity * 0.8))
+  // 根据调度数量计算线条宽度 (最小3px，最大12px)
+  const lineWidth = Math.max(3, Math.min(12, quantity * 1.2))
   
   return new Style({
     stroke: new Stroke({
       color: statusColor,
       width: lineWidth,
-      lineDash: status === '已完成' ? [5, 5] : [0] // 已完成状态使用虚线
+      lineDash: status === '已完成' ? [8, 4] : [0], // 已完成状态使用虚线，间隔更美观
+      lineCap: 'round', // 🔥 新增：线条末端圆滑
+      lineJoin: 'round' // 🔥 新增：线条连接处圆滑
     }),
     text: new Text({
-      text: `${quantity}`,
+      text: `${quantity}辆`,
       fill: new Fill({ color: '#ffffff' }),
       stroke: new Stroke({ color: statusColor, width: 2 }),
-      font: 'bold 12px Arial',
+      font: 'bold 13px "Microsoft YaHei", Arial, sans-serif',
       placement: 'line',
       textAlign: 'center',
-      offsetY: -2
+      offsetY: -3,
+      backgroundFill: new Fill({ color: statusColor }), // 🔥 新增：文字背景
+      backgroundStroke: new Stroke({ color: '#ffffff', width: 1 }), // 🔥 新增：文字背景边框
+      padding: [2, 4, 2, 4] // 🔥 新增：文字内边距
     })
   })
 }
 
 /**
- * 更新的添加调度方案到地图函数
+ * 更新的添加调度方案到地图函数（优化版）
  * @param {Array} dispatches - 调度方案数组
  */
 function addDispatchesToMapWithStatus(dispatches) {
@@ -304,6 +309,17 @@ function addDispatchesToMapWithStatus(dispatches) {
       endCoord = fromLonLat([parseFloat(endStation.longitude), parseFloat(endStation.latitude)])
     }
 
+    // 🔥 新增：计算线条的中点，用于放置箭头（避免箭头与终点站点重叠）
+    const midX = (startCoord[0] + endCoord[0]) / 2
+    const midY = (startCoord[1] + endCoord[1]) / 2
+    const midCoord = [midX, midY]
+
+    // 🔥 新增：计算箭头偏移位置（距离终点2/3处）
+    const arrowRatio = 0.75 // 箭头位置比例
+    const arrowX = startCoord[0] + (endCoord[0] - startCoord[0]) * arrowRatio
+    const arrowY = startCoord[1] + (endCoord[1] - startCoord[1]) * arrowRatio
+    const arrowCoord = [arrowX, arrowY]
+
     // 创建线条要素
     const lineFeature = new Feature({
       geometry: new LineString([startCoord, endCoord])
@@ -313,10 +329,10 @@ function addDispatchesToMapWithStatus(dispatches) {
     const lineStyle = createDispatchArrowStyleWithStatus(quantity, status)
     lineFeature.setStyle(lineStyle)
 
-    // 修改：设置要素属性（用于悬停提示）- 使用站点名称
+    // 设置要素属性（用于悬停提示）
     lineFeature.set('dispatchData', {
-      startStation: displayStartStationName, // 使用站点名称而不是ID
-      endStation: displayEndStationName,     // 使用站点名称而不是ID
+      startStation: displayStartStationName,
+      endStation: displayEndStationName,
       quantity: quantity,
       status: status,
       scheduleId: scheduleId
@@ -324,10 +340,10 @@ function addDispatchesToMapWithStatus(dispatches) {
 
     features.push(lineFeature)
 
-    // 创建箭头头部
+    // 🔥 修改：创建箭头头部，使用优化后的位置和角度计算
     const angle = calculateAngle(startCoord, endCoord)
     const arrowHeadFeature = new Feature({
-      geometry: new Point(endCoord)
+      geometry: new Point(arrowCoord) // 使用计算后的箭头位置
     })
     
     // 根据状态调整箭头颜色
@@ -347,13 +363,13 @@ function addDispatchesToMapWithStatus(dispatches) {
         break
     }
     
-    const arrowHeadStyle = createArrowHeadStyle(endCoord, angle, arrowColor)
+    const arrowHeadStyle = createArrowHeadStyle(arrowCoord, angle, arrowColor)
     arrowHeadFeature.setStyle(arrowHeadStyle)
     
-    // 修改：也为箭头头部设置悬停数据 - 使用站点名称
+    // 也为箭头头部设置悬停数据
     arrowHeadFeature.set('dispatchData', {
-      startStation: displayStartStationName, // 使用站点名称而不是ID
-      endStation: displayEndStationName,     // 使用站点名称而不是ID
+      startStation: displayStartStationName,
+      endStation: displayEndStationName,
       quantity: quantity,
       status: status,
       scheduleId: scheduleId
@@ -362,11 +378,10 @@ function addDispatchesToMapWithStatus(dispatches) {
     features.push(arrowHeadFeature)
   })
 
-  // 添加要素到图层
+  // 添加要素到地图
   dispatchLayer.getSource().addFeatures(features)
   console.log(`已添加 ${features.length} 个调度要素到地图`)
 }
-
 
 /**
  * 更新的切换调度图层显示状态函数
@@ -468,9 +483,8 @@ function getStationStyle(bikeNum = 0) {
     })
   })
 }
-
 /**
- * 创建箭头头部样式
+ * 创建优化后的箭头头部样式
  * @param {Array} endCoordinate - 终点坐标
  * @param {number} rotation - 旋转角度
  * @param {string} color - 箭头颜色
@@ -481,19 +495,29 @@ function createArrowHeadStyle(endCoordinate, rotation, color = '#ff6b35') {
     geometry: new Point(endCoordinate),
     image: new Icon({
       src: 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(`
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20">
-          <path d="M2 10 L10 2 L10 6 L18 6 L18 14 L10 14 L10 18 Z" fill="${color}" stroke="white" stroke-width="1"/>
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+          <defs>
+            <linearGradient id="arrowGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" style="stop-color:${color};stop-opacity:0.8" />
+              <stop offset="100%" style="stop-color:${color};stop-opacity:1" />
+            </linearGradient>
+          </defs>
+          <path d="M12 2 L22 12 L12 22 L12 16 L2 16 L2 8 L12 8 Z" 
+                fill="url(#arrowGradient)" 
+                stroke="white" 
+                stroke-width="1"/>
         </svg>
       `),
-      scale: 0.8,
-      rotation: rotation + Math.PI / 2, // 修改：添加90度偏移，确保箭头正确指向终点
+      scale: 0.7,
+      rotation: rotation + Math.PI/ 2,
       anchor: [0.5, 0.5]
     })
   })
 }
 
+
 /**
- * 计算两点之间的角度
+ * 计算两点之间的角度（优化版）
  * @param {Array} start - 起点坐标
  * @param {Array} end - 终点坐标
  * @returns {number} 角度（弧度）
@@ -503,6 +527,7 @@ function calculateAngle(start, end) {
   const dy = end[1] - start[1]
   return Math.atan2(dy, dx)
 }
+
 
 async function fetchStationLocations() {
   console.log('进到获取站点位置函数')
@@ -1288,7 +1313,6 @@ defineExpose({
 }
 
 /* OpenLayers 样式覆盖 */
-
 .map-container :deep(.ol-zoom-custom) {
   position: absolute;
   bottom: 20px;

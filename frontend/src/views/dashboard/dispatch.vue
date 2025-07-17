@@ -14,8 +14,9 @@ import { fromLonLat } from 'ol/proj'
 import { Style, Stroke, Fill, Circle, Text, Icon } from 'ol/style'
 import { Zoom } from 'ol/control' // 确保导入 Zoom
 import request from '@/api/axios' // Axios 请求实例
-import { startDispatch,cancelDispatch, getStationAssign, getDispatch } from '../../api/axios'
+import { startDispatch,cancelDispatch, getStationAssign, getDispatch, rejectDispatch } from '../../api/axios'
 import Overlay from 'ol/Overlay'
+import { ElMessage } from 'element-plus'
 
 // ==================== 工具&响应式数据 ====================
 const mapStatus = (statusInt) => {
@@ -759,15 +760,24 @@ async function handleStart(item) {
 
 async function handleReject(item) {
   try {
-    await rejectDispatch({
-      dispatchId: item.schedule_id
-    })
-    item.statusInt = "已拒绝"
-    item.status = mapStatus(item.statusInt)
+    const res = await rejectDispatch({ dispatchId: item.schedule_id })
+    if (res.data?.code === 200) {
+      allDispatchList.value = allDispatchList.value.filter(
+        i => i.schedule_id !== item.schedule_id
+      )
+      if (selectedPlan && selectedPlan.schedule_id === item.schedule_id) {
+        selectedPlan = null
+      }
+      // 可选：ElMessage.success('已拒绝该调度')
+    } else {
+      console.error('拒绝失败：', res.data?.msg)
+      // 可选：ElMessage.error(res.data?.msg || '未知错误')
+    }
   } catch (e) {
-    console.error('拒绝调度失败', e)
+    console.error('请求拒绝调度失败', e)
   }
 }
+
 
 async function handleCancel(item) {
   try {
@@ -794,6 +804,21 @@ async function batchStart() {
 async function batchCancel() {
   const items = filteredDispatchList.value.filter(i => selectedIds.value.includes(i.schedule_id))
   for (const item of items) await handleCancel(item)
+}
+async function batchReject() {
+  const items = filteredDispatchList.value.filter(i => 
+    selectedIds.value.includes(i.schedule_id)
+  )
+  let successCount = 0
+  for (const item of items) {
+    try {
+      await handleReject(item)
+      successCount++
+    } catch (e) {
+      console.error('批量拒绝单个失败', e)
+    }
+  }
+  ElMessage.success(`批量拒绝完成，成功：${successCount} 条`)
 }
 
 function focusStationOnMap(station) {
@@ -844,6 +869,7 @@ function focusStationOnMap(station) {
         <div class="left-column">
           <button @click="batchStart">批量采用</button>
           <button @click="batchCancel">批量撤销</button>
+          <button @click="batchReject">批量拒绝</button>
           <button @click="highlightStations">
             {{ showHighlight ? '隐藏调出站点' : '查看调出站点' }}
           </button>
@@ -911,12 +937,35 @@ function focusStationOnMap(station) {
             </td>
             <td class="col-number">{{ item.bikes_to_move ?? '-' }}</td>
             <td class="col-action">
-              <button v-if="item.statusInt === '待执行'" @click.stop="handleStart(item)">采用</button>
-              <button v-if="item.statusInt === '待执行'" @click.stop="handleReject(item)">拒绝</button>
-              <button v-if="item.statusInt === '正在执行'" @click.stop="handleCancel(item)">撤销</button>
+              <button
+                v-if="item.statusInt === '待执行'"
+                @click.stop="handleStart(item)"
+                class="btn-adopt"
+              >
+                采用
+              </button>
+              <button
+                v-if="item.statusInt === '待执行'"
+                @click.stop="handleReject(item)"
+                class="btn-reject"
+              >
+                拒绝
+              </button>
+              <button
+                v-if="item.statusInt === '正在执行'"
+                @click.stop="handleCancel(item)"
+                class="btn-cancel"
+              >
+                撤销
+              </button>
             </td>
+
             <td class="col-nav">
-              <button @click.stop="showNavigation(item)" :disabled="loading">
+              <button 
+                @click.stop="showNavigation(item)" 
+                :disabled="loading"
+                class="btn-nav"
+              >
                 {{ loading ? '加载中...' : '导航' }}
               </button>
             </td>
@@ -1146,7 +1195,7 @@ function focusStationOnMap(station) {
   color: #fff;
 }
 
-.plan-table button,
+
 .batch-buttons button,
 .highlight-btn button {
   padding: 4px 10px;
@@ -1161,7 +1210,8 @@ function focusStationOnMap(station) {
   white-space: nowrap;
 }
 
-.plan-table button:hover,
+/* .plan-table button:hover, */
+
 .batch-buttons button:hover,
 .highlight-btn button:hover {
   background-color: #66b1ff;     /* 浅蓝 hover */
@@ -1324,7 +1374,7 @@ function focusStationOnMap(station) {
 
 /* 导航按钮样式 */
 .plan-table button[disabled] {
-  background-color: #ccc;
+  background-color: #409eff;
   cursor: not-allowed;
 }
 
@@ -1509,11 +1559,15 @@ function focusStationOnMap(station) {
 }
 
 .left-column button:nth-child(2) {
-  background: #f44336; /* 第二个按钮：红色 */
+  background: #f0ad4e; /* 第二个按钮：黄色 */
 }
 
 .left-column button:nth-child(3) {
-  background: #2196f3; /* 第三个按钮：蓝色 */
+  background: #d9534f; /* 第三个按钮：红色 */
+}
+
+.left-column button:nth-child(4) {
+  background: #2196f3; /* 第四个按钮：蓝色 */
 }
 
 .left-column button:hover {
@@ -1530,4 +1584,47 @@ function focusStationOnMap(station) {
   overflow-y: auto;           /* 垂直滚动 */
   padding: 8px;
 }
+.btn-adopt {
+  background-color: #5cb85c;
+  color: white;
+  border: none;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.btn-reject{
+  background-color: #d9534f;
+  color: white;
+  border: none;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-left: 5px;
+}
+.btn-cancel {
+  background-color: #f0ad4e;
+  color: white;
+  border: none;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-left: 5px;
+}
+
+.btn-nav {
+  background-color: #2196f3;   /* 蓝色背景 */
+  color: white;
+  border: none;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.btn-nav:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
 </style>
