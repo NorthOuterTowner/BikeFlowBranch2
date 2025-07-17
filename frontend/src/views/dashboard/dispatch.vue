@@ -634,25 +634,30 @@ function animateArrow(event) {
  * @param {string} hour - 小时 (HH:mm)
  * @returns {string} ISO 8601格式的时间字符串
  */
-function buildQueryTime(date, hour) {
+ function buildQueryTime(date, hour) {
   try {
-    let hourStr = hour.toString()
-    
-    // 如果hour只是数字，转换为HH:00格式
-    if (!/\d{1,2}:\d{2}/.test(hourStr)) {
-      const hourNum = parseInt(hourStr)
-      hourStr = hourNum.toString().padStart(2, '0') + ':00'
+    let hourNum;
+    if (typeof hour === 'string' && hour.includes(':')) {
+      hourNum = parseInt(hour.split(':')[0], 10);
+    } else {
+      hourNum = parseInt(hour, 10);
     }
-    
-    // 构建ISO 8601格式的时间字符串
-    const isoString = `${date}T${hourStr}:00Z`
-    
-    console.log('构建查询时间:', { date, hour, hourStr, isoString })
-    return isoString
+
+    // 计算8个时段的起点：0、3、6、9、12、15、18、21
+    // 方法是：向下取整除以3，再乘以3
+    const periodStart = Math.floor(hourNum / 3) * 3;
+
+    // 格式化小时部分
+    const hourStr = periodStart.toString().padStart(2, '0') + ':00';
+
+    // 构建 ISO 8601 格式的时间字符串
+    const isoString = `${date}T${hourStr}:00Z`;
+
+    console.log('构建查询时间:', { date, hour, periodStart, hourStr, isoString });
+    return isoString;
   } catch (error) {
-    console.error('构建查询时间失败:', error)
-    // 返回当前时间作为fallback
-    return new Date().toISOString()
+    console.error('构建查询时间失败:', error);
+    return new Date().toISOString();
   }
 }
 
@@ -772,8 +777,9 @@ onMounted(async () => {
 async function fetchDispatch() {
   try {
     const query_time= buildQueryTime(fixedDate.value, currentHour)
+    console.log('查询时间:', query_time)
     const res = await getDispatch(query_time)
-    console.log('后端返回数据：', res.data)
+    console.log('后端返回数据111：', res.data)
     
     if (!res.data || typeof res.data !== 'object') {
       console.error('接口返回不是 JSON：', res.data)
@@ -984,9 +990,26 @@ function focusStationOnMap(station) {
 
 async function handleUpdate() {
   try {
-    const hourParam = parseInt(currentHour.split(':')[0], 10);
+    function mapHourToSegment(hour) {
+      if (hour < 3) return 0;
+      if (hour < 6) return 3;
+      if (hour < 9) return 6;
+      if (hour < 12) return 9;
+      if (hour < 15) return 12;
+      if (hour < 18) return 15;
+      if (hour < 21) return 18;
+      return 21;
+    }
+
+    const rawHour = typeof currentHour === 'string' && currentHour.includes(':') 
+      ? parseInt(currentHour.split(':')[0], 10) 
+      : Number(currentHour);
+
+    const hourParam = mapHourToSegment(rawHour);
+
     const res = await getDispatchPlan(fixedDate.value, hourParam);
     const data = res.data;
+
 
     if (res.status === 200 && data.success) {
       ElMessage.success('调度方案已更新');
@@ -995,8 +1018,9 @@ async function handleUpdate() {
       throw new Error(data.message || '调度失败');
     }
   } catch (err) {
+    //ElMessage.error('更新调度方案失败');
     console.error('更新失败', err);
-    ElMessage.error(err.message || '更新调度方案失败');
+    ElMessage.error(err.data.error || '更新调度方案失败');
   }
 }
 async function refreshDispatchList() {

@@ -1,7 +1,9 @@
 <template>
-  <div class="statics-page">
-    <!-- Header -->
-    <header class="header">
+  <div class="app-container">
+    <header class="app-header">
+      <div class="header-left">
+        <h1 class="title">共享单车潮汐预测调度数据统计</h1>
+      </div>
       <div class="user-info">
         <div class="user-top">
           <span class="welcoming">{{ welcoming }}</span>
@@ -9,7 +11,6 @@
         </div>
       </div>
     </header>
-
     <!-- 主内容区域 -->
     <div class="main-content">
       <div class="statics-container">
@@ -854,4 +855,48 @@ onMounted(async () => {
     padding: 8px 10px;
   }
 }
+.app-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 20px;
+  background-color: #f5f5f5;
+  border-bottom: 1px solid #ddd;
+  flex-shrink: 0;
+}
+.title {
+  font-size: 20px;
+  font-weight: bold;
+  margin: 0;
+}
+.update-button {
+  margin-top: 6px;
+  width: fit-content;
+  padding: 5px 12px;
+  background-color: #409eff;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.update-button:hover {
+  background-color: #66b1ff;
+}
+.user-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  margin-left: 20px;
+  gap: 15px;
+  flex-shrink: 0;
+}
+.logout-button { background:#091275; color:white; border:none; padding:4px 8px; border-radius:4px; cursor:pointer; }
+
 </style>
