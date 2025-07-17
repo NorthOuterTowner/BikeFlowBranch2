@@ -70,7 +70,6 @@ def get_future_flow(start_time, end_time):
     GROUP BY station_id
     """
     df = pd.read_sql(text(sql), engine, params={"start_time": start_time, "end_time": end_time})
-    print(f"[调试] 查询 inflow/outflow：时间段 {start_time} ~ {end_time}，共 {len(df)} 行")
     return df
 
 # ---------- 获取站点间距离 ----------
@@ -88,21 +87,20 @@ def plan_dispatch(df, capacities, distance_cache):
         min_thres, max_thres = 0.2 * cap, 0.8 * cap
         expected = row['stock'] + row['inflow'] - row['outflow']
 
-        print(f"[检查] 站点 {sid} | cap={cap} | inflow={row['inflow']} outflow={row['outflow']} stock={row['stock']} ➔ 预计库存={expected:.1f}")
-
+        # 计算最多还能接收多少车（避免爆仓）
         if expected < min_thres:
-            shortage = max(0, int(min_thres - expected))
+            shortage = max(0, int(min(min_thres - expected, max_thres - expected)))  # 再多也不能超过 max_thres
             if shortage > 0:
                 shortage_nodes.append((sid, shortage))
-                print(f" → 缺车站点: {sid} 需要 {shortage} 辆")
+
+        #计算最多还能搬出多少车（避免被搬空）
         elif expected > max_thres:
-            surplus = max(0, int(expected - max_thres))
+            surplus = max(0, int(min(expected - max_thres, expected - min_thres)))  # 再搬也不能低于 min_thres
             if surplus > 0:
                 surplus_nodes.append((sid, surplus))
-                print(f" → 多车站点: {sid} 可调出 {surplus} 辆")
 
-    print(f"\n[构建图] 调出站点：{len(surplus_nodes)} 个，调入站点：{len(shortage_nodes)} 个")
-
+                
+    
     total_supply = sum(q for _, q in surplus_nodes)
     total_demand = sum(q for _, q in shortage_nodes)
     balanced_qty = min(total_supply, total_demand)
@@ -153,8 +151,7 @@ def plan_dispatch(df, capacities, distance_cache):
         for v, bikes in v_dict.items():
             if bikes > 0:
                 actions.append({'from': u, 'to': v, 'bikes': bikes})
-                print(f"搬运计划：{u} ➔ {v} 搬 {int(bikes)} 辆")
-
+                
     return actions
 
 # ---------- 写入数据库 ----------
@@ -184,7 +181,6 @@ def save_schedule_to_db(date_str, hour, actions):
 
 # ---------- 主调度函数 ----------
 def run_scheduler_for_timepoint(date_str, hour):
-    print(f"\n[开始调度] 时间点：{date_str} {hour:02d} 点")
 
     capacities = load_station_capacities()
     locations = load_station_locations()
@@ -210,9 +206,9 @@ def run_scheduler_for_timepoint(date_str, hour):
 # ---------- 示例入口 ----------
 '''
 if __name__ == '__main__':
-    run_scheduler_for_timepoint("2025-06-13", 15)
+    run_scheduler_for_timepoint("2025-06-13", 18)
 '''
-    
+
 if __name__ == '__main__':    
     import argparse
     parser = argparse.ArgumentParser()
