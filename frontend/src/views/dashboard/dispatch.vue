@@ -986,7 +986,8 @@ function focusStationOnMap(station) {
 
 async function handleUpdate() {
   try {
-    const res = await getDispatchPlan(lookup_date.value, lookup_hour.value);
+    const hourParam = parseInt(currentHour.split(':')[0], 10);
+    const res = await getDispatchPlan(fixedDate.value, hourParam);
     const data = res.data;
 
     if (res.status === 200 && data.success) {
