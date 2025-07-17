@@ -160,11 +160,12 @@ const logout = async () => {
 
 .app-main {
   flex: 1;
-  overflow-y: auto;
-  padding: 40px 20px;
-  background-color: #f8f9fa;
   display: flex;
-  justify-content: flex-start; 
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+  box-sizing: border-box;
+  justify-content: flex-start;
   margin-bottom: 80px;
 }
 
