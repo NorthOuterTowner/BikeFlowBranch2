@@ -136,7 +136,7 @@ ${formattedExistingSchedule}
       "from_station_id": "string",
       "to_station_id": "string",
       "bikes_to_move": number,
-      "reason": "string"
+      "reason": "string (必须是中文)"
     }
   ]
 }
