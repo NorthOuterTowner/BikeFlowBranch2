@@ -3,12 +3,12 @@ const autocannon = require('autocannon');
 autocannon({
   url: 'http://localhost:3000/stations/bikeNum/timeAll?date=2025-06-13&hour=9',
   method: 'GET',
-  connections: 500,
-  duration: 60,
+  connections: 50,
+  duration: 5,
   headers: {
     'Content-Type': 'application/json',
     'account': 'admin',
-    'token': 'c012de5d-6948-4aef-af17-a2e587ebe826'
+    'token': 'adef1074-ed28-42a7-b47f-bb40801352f9'
   }
 }, (err, result) => {
   if (err) {
