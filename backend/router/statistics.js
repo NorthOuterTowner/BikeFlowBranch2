@@ -4,7 +4,23 @@ const {db,genid} = require("../db/dbUtils");
 const authMiddleware = require('../utils/auth');
 
 /**
- * 指定时间段总流量
+ * @api {post} /flow/time 获取时间范围内总流量
+ * @apiDescription 统计指定时间段内的总流入量、总流出量与总流量（inflow + outflow）。日期与小时精确到每小时，数据来源于 station_hourly_flow 表。
+ * 
+ * @apiBody {String} startDate 起始日期（格式：yyyy-mm-dd）
+ * @apiBody {Number} startHour 起始小时（0~23）
+ * @apiBody {String} endDate 结束日期（格式：yyyy-mm-dd）
+ * @apiBody {Number} endHour 结束小时（0~23）
+
+ * @apiSuccess {Number} code 状态码（200表示成功）
+ * @apiSuccess {Object} data 数据对象
+ * @apiSuccess {Number} data.inflow 总流入数量
+ * @apiSuccess {Number} data.outflow 总流出数量
+ * @apiSuccess {Number} data.total 总流量（流入 + 流出）
+ * 
+ * @apiError {Number} code 错误码
+ * @apiError {String} message 错误信息
+ * @apiError {String} [error] 错误详情（调试用）
  */
 router.post("/flow/time", authMiddleware, async (req, res) => {
     try {
@@ -72,21 +88,25 @@ router.post("/flow/time", authMiddleware, async (req, res) => {
 });
 
 /**
- * 指定站点和时间段流入流出量
- */
-router.post("/io/timeStation",authMiddleware,async (req,res)=>{
-
-});
-
-/**
- * 指定站点和日期各时间段流量
- */
-router.post("/flow/station",authMiddleware,async (req,res)=>{
-
-});
-
-/**
- * 指定开始时间和结束时间记录top10流量的站点
+ * @api {post} /top 获取流量前十的站点
+ * @apiDescription 获取在指定时间段内，总流量（inflow + outflow）排名前10的站点。
+ * 
+ * @apiHeader {String} token 用户认证Token，格式为Bearer Token。
+ * 
+ * @apiBody {String} startDate 起始日期（格式为 "YYYY-MM-DD"）
+ * @apiBody {Number} startHour 起始小时（0-23）
+ * @apiBody {String} endDate 截止日期（格式为 "YYYY-MM-DD"）
+ * @apiBody {Number} endHour 截止小时（0-23）
+ * 
+ * @apiSuccess {Number} code 返回码（200表示成功）
+ * @apiSuccess {Object[]} data 前10个站点的流量数据数组
+ * @apiSuccess {String} data.station_id 站点ID
+ * @apiSuccess {Number} data.total_flow 流量总和（inflow + outflow）
+ * 
+ * @apiError {Number} code 错误码（500表示服务器错误）
+ * @apiError {String} message 错误信息
+ * @apiError {String} [error] 错误详情（可选）
+ * 
  */
 router.post("/top", authMiddleware, async (req, res) => {
     const { startDate, startHour, endDate, endHour } = req.body;
