@@ -283,6 +283,19 @@ const selectedIds = ref([])
 const highlightStationList = ref([])
 
 // ==================== 函数定义 ====================
+// 判断是否全选
+const isAllSelected = computed(() => {
+  return allDispatchList.value.length > 0 && selectedIds.value.length === allDispatchList.value.length
+})
+
+// 切换全选 / 全不选
+const toggleSelectAll = () => {
+  if (isAllSelected.value) {
+    selectedIds.value = []
+  } else {
+    selectedIds.value = allDispatchList.value.map(item => item.schedule_id)
+  }
+}
 
 /**
  * 登出功能
@@ -1095,7 +1108,13 @@ async function refreshDispatchList() {
       <table class="plan-table">
         <thead>
           <tr>
-            <th class="col-checkbox">多选</th>
+            <th class="col-checkbox">
+              <input
+                type="checkbox"
+                :checked="isAllSelected"
+                @change="toggleSelectAll"
+              />
+            </th>
             <th class="col-stations">起止站点</th>
             <th class="col-status">状态</th>
             <th class="col-number">数量</th>
