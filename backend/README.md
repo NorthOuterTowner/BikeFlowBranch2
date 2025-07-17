@@ -703,6 +703,39 @@ query_date	String	要查询的日期，格式为 YYYY-MM-DD。	"2025-01-21"
 }
 ```
 
+（4）获取某一时间点总流量（GET）
+```bash
+/statistics/flow/day
+```
+请求格式
+```bash
+query_date	String	要查询的日期，格式为 YYYY-MM-DD。	"2025-01-21"
+```
+返回格式
+```
+    "target_date": "2025-01-30",
+    "daily_summary": [
+        {
+            "date": "2025-01-15",//数据的时间
+            "total_inflow": 1885,
+            "total_outflow": 1886,
+            "total_flow": 3771
+        },
+        {
+            "date": "2025-01-16",
+            "total_inflow": 1983,
+            "total_outflow": 1982,
+            "total_flow": 3965
+        },
+        {
+            "date": "2025-01-17",
+            "total_inflow": 2085,
+            "total_outflow": 2089,
+            "total_flow": 4174
+        },
+        ...
+```
+
 11.调度方案请求(get)
 ```bash
 /schedule

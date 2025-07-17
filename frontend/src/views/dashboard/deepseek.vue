@@ -1,8 +1,9 @@
 <script setup>
-import { ref, computed, nextTick, watch, onMounted} from 'vue'
+import { ref, computed, nextTick, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { postSuggestion, postDispatchPlan } from '../../api/axios'
 import request from '@/api/axios'
+import { ElMessage } from 'element-plus'
 
 const router = useRouter()
 
@@ -10,49 +11,33 @@ const router = useRouter()
 const welcoming = ref('管理员，欢迎您！')
 const fixedDate = computed(() => new Date().toLocaleDateString())
 const currentHour = computed(() => new Date().getHours() + ':00')
-const target_time = new Date('2025-06-13T09:35:00Z').toISOString();
-  // 直接新建一个 ISO 时间字符串
+const target_time = new Date('2025-06-13T09:35:00Z').toISOString()
 
 // 当前模式：'chat' 或 'plan'
 const currentMode = ref('chat')
 
-// 聊天消息容器 DOM 元素
+// 聊天消息容器 DOM
 const chatMessagesEl = ref(null)
 
-const isLoading = ref(false)
-//const answer = ref(null)
-
-// 两组对话
+// 两个对话列表
 const chatMessages = ref([])
 const planMessages = ref([])
 
-//记录是否发送过初始化消息
+// 是否已发送初始化消息
 const hasSentChatInit = ref(false)
 const hasSentPlanInit = ref(false)
 
-// 新消息输入框
+// 新消息输入
 const newMessage = ref('')
 
-// 计算属性，根据当前模式返回对应的消息列表
+// 优化方案相关
+const selectedPlanIds = ref([])
+const planLoading = ref(false)
+
+// 当前显示的消息列表
 const messages = computed(() => {
   return currentMode.value === 'chat' ? chatMessages.value : planMessages.value
 })
-
-const handleKeyDown = (e) => {
-  if (e.shiftKey) {
-    // Shift+Enter 正常换行
-    return
-  } else {
-    // 只按 Enter 时，发送消息并阻止默认行为（防止回车换行）
-    e.preventDefault()
-    sendMessage()
-  }
-}
-
-// 格式化文本，将换行符替换为 <br>
-const formatText = (text) => {
-  return (text ?? '').replace(/\n/g, '<br>')
-}
 
 // 滚动到底部
 const scrollToBottom = () => {
@@ -63,53 +48,221 @@ const scrollToBottom = () => {
   })
 }
 
+// 格式化文本：换行符 -> <br>
+const formatText = (text) => (text ?? '').replace(/\n/g, '<br>')
+
+// ---------------------------
+// ✅ 本地缓存：加载
+
+onMounted(() => {
+  const token = sessionStorage.getItem('token')
+  if (!token) {
+    console.warn('未找到 token，不加载缓存')
+    return
+  }
+
+  const savedChat = localStorage.getItem(`chatMessages_${token}`)
+  const savedPlan = localStorage.getItem(`planMessages_${token}`)
+
+  if (savedChat) {
+    chatMessages.value = JSON.parse(savedChat)
+    hasSentChatInit.value = true
+  } else {
+    hasSentChatInit.value = false
+  }
+
+  if (savedPlan) {
+    planMessages.value = JSON.parse(savedPlan)
+    hasSentPlanInit.value = true
+  } else {
+    hasSentPlanInit.value = false
+  }
+
+  sendInitMessage(currentMode.value)
+})
+
+// ✅ 本地缓存：监听写入
+watch(chatMessages, (newVal) => {
+  const token = sessionStorage.getItem('token')
+  if (token) {
+    localStorage.setItem(`chatMessages_${token}`, JSON.stringify(newVal))
+  }
+}, { deep: true })
+
+watch(planMessages, (newVal) => {
+  const token = sessionStorage.getItem('token')
+  if (token) {
+    localStorage.setItem(`planMessages_${token}`, JSON.stringify(newVal))
+  }
+}, { deep: true })
+
+// ---------------------------
+// 发送消息（普通聊天）
 async function sendMessage() {
   const text = newMessage.value.trim()
   if (!text) return
 
-  const msg = {
-    sender: 'user',
-    text
-  }
-
-  // 选择对应消息列表
-  const messagesList = currentMode.value === 'chat' ? chatMessages.value : planMessages.value
-
-  messagesList.push(msg)
+  chatMessages.value.push({ sender: 'user', text, loading: false })
   newMessage.value = ''
 
-  // 加入 loading 占位消息
   const loadingMsg = { sender: 'ai', text: '正在深度思考中，请稍候...', loading: true }
-  messagesList.push(loadingMsg)
+  chatMessages.value.push(loadingMsg)
 
   try {
-    let reply
-    if (currentMode.value === 'chat') {
-      reply = await postSuggestion(target_time, text)
-    } else {
-      reply = await postDispatchPlan(target_time, text)
-    }
-    // 找到 loadingMsg 替换为真正回复
-    const idx = messagesList.indexOf(loadingMsg)
+    const reply = await postSuggestion(target_time, text)
+    const idx = chatMessages.value.indexOf(loadingMsg)
     if (idx !== -1) {
-      messagesList[idx] = { sender: 'ai', text: reply }
+      chatMessages.value[idx] = { sender: 'ai', text: reply }
     }
-  } catch (error) {
-    const errMsg = '出错了，请稍后再试'
-    const idx = messagesList.indexOf(loadingMsg)
+  } catch (e) {
+    console.error('请求失败', e)
+    const idx = chatMessages.value.indexOf(loadingMsg)
     if (idx !== -1) {
-      messagesList[idx] = { sender: 'ai', text: errMsg }
+      chatMessages.value[idx] = { sender: 'ai', text: '请求失败，请稍后再试' }
+    }
+    ElMessage.error('请求失败')
+  }
+  scrollToBottom()
+}
+
+// 发送优化方案
+async function generateOptimizedPlan() {
+  const text = newMessage.value.trim()
+  if (!text) return
+
+  planMessages.value.push({ sender: 'user', text, loading: false })
+  newMessage.value = ''
+
+  const loadingMsg = { sender: 'ai', text: '正在生成优化方案...', loading: true }
+  planMessages.value.push(loadingMsg)
+  planLoading.value = true
+
+  try {
+    const res = await postDispatchPlan(target_time, text)
+    const idx = planMessages.value.indexOf(loadingMsg)
+    if (idx !== -1) {
+      planMessages.value.splice(idx, 1, {
+        sender: 'ai',
+        text: `已生成 ${res.optimized_plan.length} 条调度建议：`,
+        data: res.optimized_plan,
+        selectable: true,     // ✅ 新增：表示可选
+        loading: false
+      })
+    }
+  } catch (e) {
+    console.error('生成失败', e)
+    const idx = planMessages.value.indexOf(loadingMsg)
+    if (idx !== -1) {
+      planMessages.value.splice(idx, 1, {
+        sender: 'ai',
+        text: e.message || '生成失败，请稍后重试',
+        loading: false
+      })
+    }
+    ElMessage.error('生成失败')
+  } finally {
+    planLoading.value = false
+    scrollToBottom()
+  }
+}
+
+
+// 采纳方案
+async function acceptSelectedPlans() {
+  if (selectedPlanIds.value.length === 0) {
+    ElMessage.warning('请先选择要采纳的方案')
+    return
+  }
+
+  // 始终找到最新一条可采纳的消息
+  const lastPlanMsg = [...planMessages.value].reverse().find(
+    m => m.sender === 'ai' && m.data && m.selectable
+  )
+  if (!lastPlanMsg) {
+    ElMessage.error('未找到可采纳的方案')
+    return
+  }
+
+  const acceptedItems = [] // 已采纳成功
+  const failedItems = []   // 采纳失败
+
+  // 根据当前索引找到要采纳的项
+  const itemsToAccept = selectedPlanIds.value.map(idx => lastPlanMsg.data[idx])
+
+  for (const item of itemsToAccept) {
+    try {
+      await request.post('/dispatch/add', {
+        schedule_time: target_time,
+        start_station_id: item.from_station_id,
+        end_station_id: item.to_station_id,
+        bikes_to_move: item.bikes_to_move,
+        remark: '由AI生成'
+      })
+      acceptedItems.push(item)
+      ElMessage.success(`采纳成功：${item.from_station_id} → ${item.to_station_id}`)
+    } catch (e) {
+      console.error('采纳失败', e)
+      failedItems.push(item)
+      ElMessage.error('采纳失败，请稍后再试')
     }
   }
 
-  nextTick(() => {
-    if (chatMessagesEl.value) {
-      chatMessagesEl.value.scrollTop = chatMessagesEl.value.scrollHeight
-    }
-    scrollToBottom()
-  })
+  // ✅ 从原消息里移除已采纳项
+  lastPlanMsg.data = lastPlanMsg.data.filter(item => !acceptedItems.includes(item))
+
+  // ✅ 如果采纳了，新增一条已采纳消息（只展示，不可选）
+  if (acceptedItems.length > 0) {
+    planMessages.value.push({
+      sender: 'ai',
+      text: `已采纳 ${acceptedItems.length} 条调度方案：`,
+      data: acceptedItems,
+      selectable: false
+    })
+  }
+
+  // ✅ 清空勾选
+  selectedPlanIds.value = []
 }
 
+
+// 初始化提示
+function sendInitMessage(mode) {
+  if (mode === 'chat') {
+    if (!hasSentChatInit.value && chatMessages.value.length === 0) {
+      chatMessages.value.push({
+        sender: 'ai',
+        text: '这是普通聊天模式，随便跟我说说什么吧。'
+      })
+      hasSentChatInit.value = true
+    }
+  } else if (mode === 'plan') {
+    if (!hasSentPlanInit.value && planMessages.value.length === 0) {
+      planMessages.value.push({
+        sender: 'ai',
+        text: '请输入需求，我会帮你生成调度方案。'
+      })
+      hasSentPlanInit.value = true
+    }
+  }
+}
+
+// 切换模式时发送初始化提示
+watch(currentMode, (mode) => {
+  sendInitMessage(mode)
+})
+
+// 回车处理
+const handleKeyDown = (e) => {
+  if (e.shiftKey) return
+  e.preventDefault()
+  if (currentMode.value === 'chat') {
+    sendMessage()
+    scrollToBottom()
+  } else {
+    generateOptimizedPlan()
+    scrollToBottom()
+  }
+}
 
 // 退出
 const logout = async () => {
@@ -118,35 +271,15 @@ const logout = async () => {
   } catch (error) {
     console.warn('登出失败，可忽略', error)
   } finally {
-    // 清除所有 sessionStorage 项
+    const token = sessionStorage.getItem('token')
+    if (token) {
+      localStorage.removeItem(`chatMessages_${token}`)
+      localStorage.removeItem(`planMessages_${token}`)
+    }
     sessionStorage.clear()
     router.push('/login')
   }
 }
-
-function sendInitMessage(mode) {
-  if (mode === 'chat' && !hasSentChatInit.value) {
-    chatMessages.value.push({
-      sender: 'ai',
-      text: '这是普通聊天模式，随便跟我说说什么吧。'
-    })
-    hasSentChatInit.value = true
-  } else if (mode === 'plan' && !hasSentPlanInit.value) {
-    planMessages.value.push({
-      sender: 'ai',
-      text: '在这里输入你想要的调度方案的修改，我会给你直接生成新的调度方案，你可以选择采纳或者不采纳。'
-    })
-    hasSentPlanInit.value = true
-  }
-}
-
-watch(currentMode, (newMode) => {
-  sendInitMessage(newMode)
-})
-
-onMounted(() => {
-  sendInitMessage(currentMode.value)
-})
 
 </script>
 
@@ -200,15 +333,61 @@ onMounted(() => {
           :class="['message', msg.sender + '-message']"
         >
           <div class="message-header">
-            <div class="message-icon">
-              <i :class="msg.sender === 'user' ? 'fas fa-user' : 'fas fa-robot'"></i>
+            <div class="message-icon" v-if="msg.sender === 'ai'">
+              <img
+                src="/icons/ds.png"
+                alt="AI头像"
+                style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;"
+              />
             </div>
             <div class="message-name">
               {{ msg.sender === 'user' ? '管理员' : 'DeepSeek 助手' }}
               <span v-if="msg.loading" class="spinner-small"></span>
             </div>
           </div>
+
           <div class="message-bubble" v-html="formatText(msg.text)"></div>
+
+          <!-- 如果 msg 有 data，就在这里显示交互式方案列表 -->
+          <div v-if="msg.data" class="message-bubble" style="background:#fff; margin-top:8px;">
+            <ul style="list-style: none; padding: 0; margin:0;">
+              <li v-for="(item, i) in msg.data" :key="i" style="margin-bottom: 8px;">
+                <template v-if="msg.selectable">
+                  <!-- 可勾选 -->
+                  <label style="cursor: pointer;">
+                    <input 
+                      type="checkbox"
+                      v-model="selectedPlanIds"
+                      :value="i"
+                      style="margin-right: 6px;"
+                    />
+                    从 <strong>{{ item.from_station_id }}</strong> → <strong>{{ item.to_station_id }}</strong>，
+                    调度 <strong>{{ item.bikes_to_move }}</strong> 辆
+                  </label>
+                </template>
+                <template v-else>
+                  <!-- 已采纳，只展示 -->
+                  从 <strong>{{ item.from_station_id }}</strong> → <strong>{{ item.to_station_id }}</strong>，
+                  调度 <strong>{{ item.bikes_to_move }}</strong> 辆
+                </template>
+                <div style="color: gray; font-size: 12px; margin-left: 24px;">
+                  {{ item.reason }}
+                </div>
+              </li>
+            </ul>
+
+            <!-- 只有 selectable 才显示采纳按钮 -->
+            <button 
+              v-if="msg.selectable"
+              class="send-button" 
+              @click="acceptSelectedPlans"
+            >
+              采纳选中方案
+            </button>
+          </div>
+
+
+
         </div>
       </div>
 
@@ -225,17 +404,9 @@ onMounted(() => {
           </button>
         </div>
       </div>
-
-      <!-- 加载弹窗
-      <div v-if="isLoading" class="modal-loading">
-        <div class="spinner"></div>
-        <p>正在深度思考中，请稍候...</p>
-      </div> -->
-
     </div>
   </div>
 </template>
-
 
 <style scoped>
 .app-container {
@@ -395,7 +566,6 @@ onMounted(() => {
 .message-icon {
   width: 22px;
   height: 22px;
-  background: #1d4ed8;
   color: white;
   display: flex;
   align-items: center;

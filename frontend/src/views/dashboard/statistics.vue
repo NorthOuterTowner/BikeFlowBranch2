@@ -19,25 +19,27 @@
           <div class="date-filter">
             <div class="date-item">
               <label>开始日期:</label>
-              <input type="date" v-model="startDate" />
+              <input type="date" v-model="startDate" :max="maxDate" />
             </div>
+
             <div class="date-item">
               <label>开始小时:</label>
               <select v-model="startHour">
-                <option v-for="hour in 24" :key="hour-1" :value="(hour-1).toString().padStart(2, '0')">
-                  {{ (hour-1).toString().padStart(2, '0') }}:00
+                <option v-for="hour in startHourOptions" :key="hour" :value="hour">
+                  {{ hour }}:00
                 </option>
               </select>
             </div>
+
             <div class="date-item">
               <label>结束日期:</label>
-              <input type="date" v-model="endDate" />
+              <input type="date" v-model="endDate" :max="maxDate" />
             </div>
             <div class="date-item">
               <label>结束小时:</label>
               <select v-model="endHour">
-                <option v-for="hour in 24" :key="hour-1" :value="(hour-1).toString().padStart(2, '0')">
-                  {{ (hour-1).toString().padStart(2, '0') }}:00
+                <option v-for="hour in endHourOptions" :key="hour" :value="hour">
+                  {{ hour }}:00
                 </option>
               </select>
             </div>
@@ -52,10 +54,6 @@
           <div class="chart-container">
             <canvas ref="chartCanvas" width="800" height="400"></canvas>
           </div>
-        </div>
-
-        <div class="line-chart-section" style="width: 800px; height: 400px; margin: 20px auto;">
-          <canvas ref="lineCanvas" width="800" height="400"></canvas>
         </div>
 
         <!-- 折叠按钮 -->
@@ -86,13 +84,18 @@
           </table>
         </div>
 
+        
+        <div class="line-chart-section" style="width: 800px; height: 400px; margin: 20px auto;">
+          <canvas ref="lineCanvas" width="800" height="400"></canvas>
+        </div>
+
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, onMounted, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import request from '@/api/axios'
 
@@ -111,51 +114,50 @@ const startHour = ref('00')
 const endDate = ref('')
 const endHour = ref('23')
 
+// 从 localStorage 获取最大允许的日期和小时
+const maxDateStr = localStorage.getItem('selectedDate') || '' // 格式 YYYY-MM-DD
+const maxHourStr = localStorage.getItem('selectedHour') || '23' // 格式 HH，如 "18"
+
+// 转成Date对象方便比较
+const maxDateTime = maxDateStr
+  ? new Date(`${maxDateStr}T${maxHourStr}:00:00`)
+  : new Date() // 如果没设置就用当前时间
+
+// maxDate 用于日期输入框的 max 属性
+const maxDate = maxDateStr || new Date().toISOString().slice(0, 10)
+
+// 用于动态生成小时选项，限制小时最大值
+const generateHourOptions = (dateStr) => {
+  let maxHour = 23
+  if (dateStr === maxDateStr) {
+    maxHour = parseInt(maxHourStr)
+  }
+  const hours = []
+  for (let h = 0; h <= maxHour; h++) {
+    hours.push(h.toString().padStart(2, '0'))
+  }
+  return hours
+}
+
+// 响应式小时选项
+const startHourOptions = ref([])
+const endHourOptions = ref([])
+
+// 初始化日期和小时
 const initDefaultDates = () => {
-  const today = new Date()
-  const yesterday = new Date(today)
-  yesterday.setDate(today.getDate() - 1)
-
-  const savedDate = localStorage.getItem('selectedDate') // 用作统一的日期来源
-
-  // 如果有保存的 selectedDate，则同时作为开始和结束日期
-  if (savedDate) {
-    startDate.value = savedDate
-    endDate.value = savedDate
+  if (maxDateStr) {
+    startDate.value = maxDateStr
+    endDate.value = maxDateStr
   } else {
-    // 否则按默认：昨天作为开始，今天作为结束
-    startDate.value = yesterday.toISOString().split('T')[0]
-    endDate.value = today.toISOString().split('T')[0]
+    startDate.value = maxDate
+    endDate.value = maxDate
   }
-
-  // 小时默认不变
-  startHour.value = '00'
-  endHour.value = '23'
+  startHour.value = maxHourStr.padStart(2, '0')
+  endHour.value = maxHourStr.padStart(2, '0')
 }
+
+
 const showTable = ref(false)
-
-const fetchFlowSummaryByHour = async (queryTime, retries = 3, delay = 500) => {
-  for (let attempt = 0; attempt < retries; attempt++) {
-    try {
-      const res = await request.get('/statistics/flow/hour', {
-        params: { query_time: queryTime }
-      })
-      if (res.data) {
-        return res.data.total_flow || 0
-      }
-    } catch (e) {
-      if (e.response?.status === 429) {
-        console.warn(`限流，第 ${attempt + 1} 次重试...`)
-        await new Promise(r => setTimeout(r, delay)) // 等待一段时间再重试
-      } else {
-        console.error('请求失败:', e)
-        break // 非限流错误就不重试了
-      }
-    }
-  }
-  console.warn(`超过重试次数，跳过时间点 ${queryTime}`)
-  return 0
-}
 
 
 const generateHourRange = (startDateStr, startHourStr, endDateStr, endHourStr) => {
@@ -176,39 +178,16 @@ const generateHourRange = (startDateStr, startHourStr, endDateStr, endHourStr) =
 
   return hours
 }
-
-const hourlyFlowData = ref([]) // [{ time: '07-14 00:00', flow: 123 }, ...]
-
-const fetchHourlyFlowData = async () => {
-  const hourList = generateHourRange(startDate.value, startHour.value, endDate.value, endHour.value)
-  hourlyFlowData.value = []
-  loading.value = true
-
-  for (let i = 0; i < hourList.length; i++) {
-    const [dateStr, hourStr] = hourList[i]
-    const queryTime = `${dateStr}T${hourStr}:00:00Z`
-    const flow = await fetchFlowSummaryByHour(queryTime)
-    
-    hourlyFlowData.value.push({
-      time: `${dateStr.slice(5)} ${hourStr}:00`,
-      flow
-    })
-
-    // 节流：避免被限流（可调成 300ms）
-    await new Promise(resolve => setTimeout(resolve, 250))
-  }
-
-  loading.value = false
-  await nextTick()
-  renderLineChart()
-}
+let lineChartInstance = null // 声明折线图实例
 
 const lineCanvas = ref(null)
-let lineChartInstance = null
 
 const renderLineChart = () => {
   if (!lineCanvas.value || hourlyFlowData.value.length === 0) return
+
   const ctx = lineCanvas.value.getContext('2d')
+
+  // 销毁旧的实例避免内存泄露
   if (lineChartInstance) {
     lineChartInstance.destroy()
   }
@@ -219,16 +198,16 @@ const renderLineChart = () => {
   lineChartInstance = new Chart(ctx, {
     type: 'line',
     data: {
-      labels,
+      labels: labels,
       datasets: [{
-        label: '每小时总流量',
-        data,
-        borderColor: '#4A90E2',
-        backgroundColor: 'rgba(74, 144, 226, 0.3)',
+        label: '小时流量',
+        data: data,
         fill: true,
-        tension: 0.3,
+        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+        borderColor: '#4A90E2',
+        borderWidth: 2,
         pointRadius: 3,
-        pointHoverRadius: 6,
+        tension: 0.3
       }]
     },
     options: {
@@ -237,32 +216,89 @@ const renderLineChart = () => {
       plugins: {
         title: {
           display: true,
-          text: '时间段内每小时总流量折线图',
-          font: { size: 18, weight: 'bold' },
+          text: '小时流量趋势图',
+          font: {
+            size: 18,
+            weight: 'bold'
+          },
           padding: 20
         },
         tooltip: {
           callbacks: {
-            label: ctx => `流量: ${ctx.parsed.y.toLocaleString()}`
-          }
-        },
-        legend: { display: true }
-      },
-      scales: {
-        x: {
-          title: { display: true, text: '时间' }
-        },
-        y: {
-          beginAtZero: true,
-          title: { display: true, text: '流量' },
-          ticks: {
-            callback: value => value.toLocaleString()
+            label: function(context) {
+              return `流量: ${context.parsed.y}`
+            }
           }
         }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          title: {
+            display: true,
+            text: '流量'
+          }
+        },
+        x: {
+          title: {
+            display: true,
+            text: '时间'
+          }
+        }
+      },
+      animation: {
+        duration: 800,
+        easing: 'easeInOutQuart'
       }
     }
   })
 }
+
+
+const hourlyFlowData = ref([]) // [{ time: '07-14 00:00', flow: 123 }, ...]
+
+const fetchHourlyFlowDataByDayAPI = async (dateStr) => {
+  try {
+    const res = await request.get('/statistics/flow/day', {
+      params: { query_date: dateStr }
+    })
+    return res.data.hourly_flows || []
+  } catch (e) {
+    console.error(`获取 ${dateStr} 小时流量失败:`, e)
+    return []
+  }
+}
+
+const fetchHourlyFlowData = async () => {
+  const hourList = generateHourRange(startDate.value, startHour.value, endDate.value, endHour.value)
+  const dateSet = new Set(hourList.map(([date]) => date)) // 所有查询涉及的日期
+  loading.value = true
+  hourlyFlowData.value = []
+
+  const dateToHourlyMap = {} // date -> [24小时流量]
+
+  for (const dateStr of dateSet) {
+    const flows = await fetchHourlyFlowDataByDayAPI(dateStr)
+    dateToHourlyMap[dateStr] = flows
+    await new Promise(r => setTimeout(r, 200)) // 节流
+  }
+
+  for (const [dateStr, hourStr] of hourList) {
+    const hour = parseInt(hourStr)
+    const flowObj = dateToHourlyMap[dateStr]?.find(h => h.hour === hour)
+    const flow = flowObj?.total_flow || 0
+
+    hourlyFlowData.value.push({
+      time: `${dateStr.slice(5)} ${hourStr}:00`,
+      flow
+    })
+  }
+
+  loading.value = false
+  await nextTick()
+  renderLineChart()
+}
+
 
 
 // 获取Top10数据
@@ -271,6 +307,7 @@ const fetchTop10Data = async () => {
     alert('请选择开始和结束日期')
     return
   }
+
 
   loading.value = true
   try {
@@ -402,9 +439,43 @@ const logout = async () => {
   }
 }
 
+// 监听日期变化，动态调整小时选项，并校正小时
+watch(startDate, (newDate) => {
+  startHourOptions.value = generateHourOptions(newDate)
+  if (!startHourOptions.value.includes(startHour.value)) {
+    startHour.value = startHourOptions.value[startHourOptions.value.length - 1]
+  }
+})
+
+watch(endDate, (newDate) => {
+  endHourOptions.value = generateHourOptions(newDate)
+  if (!endHourOptions.value.includes(endHour.value)) {
+    endHour.value = endHourOptions.value[endHourOptions.value.length - 1]
+  }
+})
+
+// 防止时间超过最大限制，自动修正
+watch([startDate, startHour], ([d, h]) => {
+  const current = new Date(`${d}T${h}:00:00`)
+  if (current > maxDateTime) {
+    startDate.value = maxDateStr
+    startHour.value = maxHourStr.padStart(2, '0')
+  }
+})
+
+watch([endDate, endHour], ([d, h]) => {
+  const current = new Date(`${d}T${h}:00:00`)
+  if (current > maxDateTime) {
+    endDate.value = maxDateStr
+    endHour.value = maxHourStr.padStart(2, '0')
+  }
+})
+
 // 组件挂载
 onMounted(() => {
   initDefaultDates()
+  startHourOptions.value = generateHourOptions(startDate.value)
+  endHourOptions.value = generateHourOptions(endDate.value)
   
   // 动态加载Chart.js
   if (typeof Chart === 'undefined') {
@@ -626,6 +697,7 @@ onMounted(() => {
 .toggle-table-button button:hover {
   background-color: #357ABD;
 }
+
 
 /* 响应式设计 */
 @media (max-width: 768px) {
