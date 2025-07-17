@@ -148,38 +148,6 @@ import seaborn as sns
 from datetime import datetime
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 
-def calculate_stock(preds, station_ids, initial_stock=None):
-    """
-    基于流入流出预测计算库存变化
-    确保库存不为0，负数替换为0
-    """
-    # 获取站点容量信息
-    engine = create_engine('mysql+pymysql://zq:123456@localhost/traffic?charset=utf8mb4')
-    with engine.connect() as conn:
-        capacities = pd.read_sql("SELECT station_id, capacity FROM station_info", conn)
-    capacity_map = capacities.set_index('station_id')['capacity'].fillna(20).astype(int).to_dict()
-    
-    num_times, num_stations = preds.shape[0], preds.shape[1]
-    stock_preds = np.zeros((num_times, num_stations))
-    
-    # 设置初始库存(至少为1)
-    if initial_stock is None:
-        for s in range(num_stations):
-            stock_preds[0, s] = max(1, int(capacity_map.get(station_ids[s], 20) * 0.5))  # 确保初始库存≥1
-    else:
-        stock_preds[0, :] = np.maximum(1, initial_stock)  # 确保初始库存≥1
-    
-    # 计算库存变化
-    for t in range(1, num_times):
-        for s in range(num_stations):
-            capacity = capacity_map.get(station_ids[s], 20)
-            new_stock = stock_preds[t-1, s] + preds[t, s, 0] - preds[t, s, 1]
-            
-            # 确保库存不为负且不超过容量，且至少为1
-            stock_preds[t, s] = np.clip(new_stock, 1, capacity)  # 最小值为1
-    
-    return stock_preds
-
 def evaluate_predictions(preds, Y_test, predict_times, station_ids):
     """
     评估STGCN预测结果，分析零值分布、潮汐效应和预测质量
@@ -341,40 +309,41 @@ def evaluate_predictions(preds, Y_test, predict_times, station_ids):
         print(f"站点 {station_ids[s]}: 流入MAE={station_mae_inflow[s]:.4f}, 流出MAE={station_mae_outflow[s]:.4f}")
 
     print("\n=== 评估完成 ===")
-def write_to_database(preds, stock_preds, predict_times):
-    """写入数据库，确保库存值有效"""
+def write_to_database(preds, predict_times):
+    """更健壮的数据库写入"""
     print("\n准备写入数据库...")
     try:
+        # 加载站点ID
         with open('./handle/forecast/station_ids.json', 'r') as f:
             station_ids = json.load(f)
         
+        # 获取站点容量
         engine = create_engine('mysql+pymysql://zq:123456@localhost/traffic?charset=utf8mb4')
         with engine.connect() as conn:
             capacities = pd.read_sql("SELECT station_id, capacity FROM station_info", conn)
         capacity_map = capacities.set_index('station_id')['capacity'].fillna(20).astype(int).to_dict()
         
+        # 准备数据
         records = []
         for t in range(preds.shape[0]):
             dt = datetime.strptime(predict_times[t], '%Y-%m-%d %H:%M:%S')
             for s in range(preds.shape[1]):
-                # 最终确认库存值有效(防御性编程)
-                final_stock = max(1, min(
-                    round(float(stock_preds[t,s]), 2),
-                    capacity_map.get(station_ids[s], 20)
-                ))
-                
                 records.append({
                     'station_id': station_ids[s],
                     'date': dt.date().isoformat(),
                     'hour': int(dt.hour),
                     'inflow': round(float(preds[t,s,0]), 2),
                     'outflow': round(float(preds[t,s,1]), 2),
-                    'stock': final_stock,
+                    'stock': int(capacity_map.get(station_ids[s], 20) * 0.5),
                     'updated_at': dt.strftime('%Y-%m-%d %H:%M:%S')
                 })
+        print("\n[检查点6] 即将写入的示例记录:")
+        for i in range(min(3, len(records))):  # 打印前3条记录
+            print(f"记录{i+1}: {records[i]}")
         
-        # 分批写入(保持原有逻辑)
+        # 分批写入
         with engine.begin() as conn:
+            # 使用更高效的日期范围删除
             start_time = predict_times[0]
             end_time = predict_times[-1]
             conn.execute(text("""
@@ -382,6 +351,7 @@ def write_to_database(preds, stock_preds, predict_times):
                 WHERE CONCAT(date, ' ', LPAD(hour, 2, '0')) BETWEEN :start AND :end
             """), {'start': start_time[:13], 'end': end_time[:13]})
             
+            # 分批插入
             insert_sql = text("""
                 INSERT INTO station_hourly_status 
                 (station_id, date, hour, inflow, outflow, stock, updated_at)
@@ -394,7 +364,7 @@ def write_to_database(preds, stock_preds, predict_times):
             for i in range(0, len(records), batch_size):
                 conn.execute(insert_sql, records[i:i+batch_size])
         
-        print(f"成功写入 {len(records)} 条记录 (库存值已确保≥1)")
+        print(f"成功写入 {len(records)} 条记录 (共 {preds.shape[0]} 个时间点 × {preds.shape[1]} 个站点)")
     
     except Exception as e:
         print(f"数据库写入失败: {str(e)}")
@@ -412,7 +382,7 @@ if __name__ == "__main__":
         # 加载测试集真实数据并调整形状
         data = np.load('./handle/forecast/stgcn_dataset.npz')
         Y_test = data['Y_test'][:100].squeeze(1)  # 移除时间步长维度，从 (100, 1, 86, 2) 变为 (100, 86, 2)
-        stock_preds = calculate_stock(preds, station_ids)
+        
         # 分析结果
         analyze_predictions(preds, station_ids)
         
@@ -433,7 +403,7 @@ if __name__ == "__main__":
         plt.show()
         
         # 写入数据库
-        write_to_database(preds, stock_preds, predict_times)
+        write_to_database(preds, predict_times)
         
     except Exception as e:
         print(f"程序执行失败: {str(e)}")

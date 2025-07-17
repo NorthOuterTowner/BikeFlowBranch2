@@ -685,3 +685,29 @@ query_time	String	要查询的整点时间，ISO 8601格式。分钟、秒和毫
   "total_flow": 295//总流量
 }
 ```
+
+11.调度方案请求(get)
+```bash
+/schedule
+```
+请求格式
+```bash
+{
+    "date": "2025-06-13",//日期
+    "hour": 9//整点时间，生成是该点的调度方案
+}
+```
+返回格式
+```bash
+{
+    "success": true,
+    "message": "调度成功",
+    "output": "[调度完成] 调度动作数：6"
+}
+{
+    "success": false,
+    "message": "调度执行失败",
+    "error": "[警告] 时间段内无数据：..."
+}
+
+
