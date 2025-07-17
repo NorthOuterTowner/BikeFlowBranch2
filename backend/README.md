@@ -705,7 +705,7 @@ query_date	String	要查询的日期，格式为 YYYY-MM-DD。	"2025-01-21"
 
 （4）获取某一时间点总流量（GET）
 ```bash
-/statistics/flow/day
+/statistics/flow/days
 ```
 请求格式
 ```bash
