@@ -860,6 +860,12 @@ onMounted(async () => {
   flex-direction: column;
   height: 100vh;
 }
+
+.main-content {
+  flex: 1 1 auto;
+  overflow-y: auto; /* 让主内容区域可以滚动 */
+  padding: 10px;
+}
 .app-header {
   display: flex;
   justify-content: space-between;
