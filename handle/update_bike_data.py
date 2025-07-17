@@ -1,4 +1,3 @@
-import os
 import requests
 import mysql.connector
 from mysql.connector import Error
