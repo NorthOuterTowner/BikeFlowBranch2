@@ -240,8 +240,6 @@ if __name__ == '__main__':
     run_scheduler_for_timepoint("2025-06-13", 15)
 '''
 
-# patch.py 最后加上这段
-
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()

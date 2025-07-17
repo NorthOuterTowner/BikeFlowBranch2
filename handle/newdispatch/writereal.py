@@ -1,3 +1,6 @@
+'''
+6.12-6.14的真实数据初始化
+'''
 import sys
 sys.stdout.reconfigure(encoding='utf-8')
 
